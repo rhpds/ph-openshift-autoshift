@@ -83,15 +83,17 @@ Intermediate
 
 ## Infrastructure Requirements
 
-- **Cloud provider:** AWS
-- **Cluster type:** Multinode
+- **Cloud provider:** AWS (EC2)
+- **Cluster type:** Compact (schedulable control plane, no dedicated workers)
 - **OCP version:** 4.22
 - **Topology:** Per-student
-- **Sizing:** 3 control plane (16 CPU, 64GB RAM), 3 workers (8 CPU, 32GB RAM, 100GB disk) — hub cluster. Additionally, the lab provisions a SNO spoke cluster on AWS (Module 3) which requires additional AWS resources (1 EC2 instance, VPC, NAT gateway, Elastic IP, Route 53 zone).
+- **Sizing:** 3x m5a.8xlarge compact (32 vCPU, 128 GB RAM each) — hub cluster with schedulable control plane, no dedicated worker nodes. Additionally, the lab provisions a SNO spoke cluster on AWS (Module 3) which requires additional AWS resources (1 EC2 instance, VPC, NAT gateway, Elastic IP, Route 53 zone).
 - **Automation approach:** Combo (Helm + ArgoCD for AutoShift deployment, ACM policies for cluster configuration)
 - **AI/MaaS:** None
 - **External services:** github.com (AutoShift source repo), quay.io (OCI chart registry)
 - **Non-GA products:** None (all products are GA)
+- **Open environment credentials:** Required — AWS credentials with available Elastic IPs for spoke cluster provisioning. Credentials must not be reused from prior sessions to avoid Elastic IP exhaustion.
+- **FIPS:** Preferred (toggle available) — not mandatory
 
 ## Assessment Strategy
 
