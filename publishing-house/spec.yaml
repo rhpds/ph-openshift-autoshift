@@ -65,15 +65,16 @@ spec:
     max_concurrent_users: null
 
     # --- OCP-specific fields (only when platform = ocp) ---
+    # Compact topology: 3x m5a.8xlarge (32 vCPU, 128 GB RAM) — schedulable control plane, no dedicated workers
     ocp_version: "4.22"
-    cluster_type: "multinode"
+    cluster_type: "compact"
     control_plane_instance_count: 3
-    control_plane_cpu: 16
-    control_plane_ram_gb: 64
-    worker_count: 3
-    worker_cpu: 8
-    worker_ram_gb: 32
-    worker_disk_gb: 100
+    control_plane_cpu: 32
+    control_plane_ram_gb: 128
+    worker_count: 0
+    worker_cpu: null
+    worker_ram_gb: null
+    worker_disk_gb: null
 
     # --- VM-specific fields (only when platform = rhel-vms) ---
     vms_per_student: []
