@@ -70,12 +70,11 @@ Intermediate
 
 ## Environment
 
-**Learner view:** A single OpenShift 4.22 cluster with cluster-admin access, pre-installed with Red Hat ACM and OpenShift GitOps. The AutoShift Helm chart repository is cloned locally. No operators beyond ACM and GitOps are pre-installed — participants enable them through the lab exercises. AWS credentials are pre-staged in a Secret for spoke cluster provisioning.
+**Learner view:** A single OpenShift 4.22 cluster with cluster-admin access. No operators are pre-installed — participants install Red Hat ACM, OpenShift GitOps, and AutoShift themselves in Module 1 as part of the bootstrap exercise. The AutoShift Helm chart repository is cloned locally. AWS credentials are pre-staged in a Secret for spoke cluster provisioning in later modules.
 
 **Automation needed:** Yes
 
-- Red Hat ACM operator installed and MultiClusterHub deployed
-- Red Hat OpenShift GitOps operator installed and ArgoCD instance created
+- Bare OpenShift 4.22 cluster provisioned with cluster-admin access (no additional operators pre-installed)
 - AutoShift Helm chart repository cloned to student workspace
 - AWS credentials Secret pre-created in cluster-install-secrets namespace
 - Pull secret available for spoke cluster provisioning
