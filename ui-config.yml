@@ -12,9 +12,6 @@ view_switcher:
 
 tabs:
   - name: Terminal
-    path: /terminal
-    port: 443
-  - name: Bastion
     path: /wetty
     port: 443
   - name: OpenShift Console
