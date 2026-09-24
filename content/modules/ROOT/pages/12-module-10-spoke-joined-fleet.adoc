@@ -1,0 +1,379 @@
+= Your spoke cluster joined the fleet
+include::partial$_attributes.adoc[]
+:navtitle: Module 10: Your spoke cluster joined the fleet
+
+Module 9 explained that every fleet operation reduces to clusterset membership. This module is the proof.
+
+Back in Module 3 you declared a cluster that did not exist. You wrote a values file, assigned it to the `managed` clusterset, and walked away. Since then you have spent 6 modules on other work while Hive built it.
+
+Now collect the result. The cluster registered itself, the cluster-labels policy stamped it from the clusterset you chose, Placements selected it, and the policies you declared applied to a machine you have never logged into.
+
+Then you tear it down, which is not optional.
+
+== Learning objectives
+
+
+By the end of this module, you'll be able to:
+
+* Confirm a Hive-provisioned cluster registered as a `ManagedCluster` and inherited its clusterset's labels
+* Explain how a cluster you never configured directly ended up running the operators you declared
+* Deprovision the cluster and confirm the AWS resources are released
+
+== Exercise 1: Watch the cluster join the fleet
+
+=== Follow the provision
+
+The install log lives in the Hive provision pod. Find it and tail it:
+
+[source,role="execute"]
+----
+oc get pods -n spoke-aws-1 | grep provision
+----
+
+----
+spoke-aws-1-0-xxxxx-provision-xxxxx   1/1   Running   0   3m
+----
++
+The name carries the attempt number and 2 random segments, so yours will differ. Once the
+install finishes the pod reports `0/1  Completed`.
+
+[source,role="execute"]
+----
+oc logs -n spoke-aws-1 \
+  $(oc get pods -n spoke-aws-1 -o name | grep provision) \
+  -c installer -f
+----
+
+Read the `installer` container. The pod also has a `hive` container, but it only stages binaries
+and finishes in seconds; its log contains nothing about the install.
+
+The log streams the OpenShift installer output. You provisioned a single-node cluster in Module 3,
+so the phases are:
+
+* *Bootstrap:* Hive creates the VPC, subnets, NAT gateway, Elastic IP, and Route 53 records. The bootstrap EC2 instance starts, then the single control-plane node starts and pulls its ignition config from it.
+* *Control plane:* The node becomes Ready and the bootstrap instance is destroyed.
+* *Operators:* Cluster operators roll out and reach Available. Expect a long run of "Still waiting for the cluster to initialize" lines while that happens; the list of unavailable operators shrinking is the sign of progress.
+
+Budget roughly 40 minutes end to end, though it varies with the region and the day.
+
+Watch the `ClusterDeployment` conditions for high-level status:
+
+[source,role="execute"]
+----
+oc get clusterdeployment spoke-aws-1 -n spoke-aws-1 \
+  -o jsonpath='{range .status.conditions[*]}{.type}{": "}{.message}{"\n"}{end}'
+----
+
+=== Watch the cluster join the fleet
+
+When the install finishes, Hive marks the `ClusterDeployment` as installed and creates the `ManagedCluster` object. ACM imports the cluster. Then the label flow runs automatically:
+
+. The `cluster-labels` policy reads the `cluster-set.managed` ConfigMap (built from the `managed-minimal.yaml` you wrote in Module 3) and stamps every label from that clusterset onto `spoke-aws-1`.
+. Placements that select the `managed` clusterset now match `spoke-aws-1`.
+. Every policy you enabled in earlier modules that targets `managed` is replicated to `spoke-aws-1` and enforced.
+
+Watch the `ManagedCluster` appear and reach `JOINED`:
+
+[source,role="execute"]
+----
+oc get managedcluster spoke-aws-1 -w
+----
+
+----
+NAME          HUB ACCEPTED   MANAGED CLUSTER URLS                                  JOINED   AVAILABLE   AGE
+spoke-aws-1   true           https://api.spoke-aws-1.<base-domain>:6443            True     True        42m
+----
+
+Once `JOINED: True`, confirm the clusterset label was stamped:
+
+[source,role="execute"]
+----
+oc get managedcluster spoke-aws-1 \
+  -o jsonpath='{.metadata.labels.cluster\.open-cluster-management\.io/clusterset}{"\n"}'
+----
+
+----
+managed
+----
+
+Inspect the full set of labels the `cluster-labels` policy stamped:
+
+[source,role="execute"]
+----
+oc get managedcluster spoke-aws-1 -o json | grep '"autoshift\.io/'
+----
+
+----
+            "autoshift.io/cluster-type": "spoke",
+            "autoshift.io/node-feature-discovery": "true",
+            "autoshift.io/node-feature-discovery-channel": "stable",
+            "autoshift.io/node-feature-discovery-source": "redhat-operators",
+            "autoshift.io/node-feature-discovery-source-namespace": "openshift-marketplace",
+            "autoshift.io/node-feature-discovery-subscription-name": "nfd",
+            "autoshift.io/openshift-version": "4.22.11",
+            "autoshift.io/owning-deployment": "autoshift",
+            "autoshift.io/owning-namespace": "policies-autoshift",
+----
++
+Your `openshift-version` will differ. Module 3 wrote that value into `managed-minimal.yaml` by
+reading it off your own cluster, so it matches whatever release your lab was provisioned at.
+
+Every label from the `managed` clusterset values file is there, plus `autoshift.io/owning-namespace` and `autoshift.io/owning-deployment` stamped automatically by the policy, and `autoshift.io/cluster-type: spoke` derived from the fact that the clusterset was declared under `managedClusterSets`.
+
+This is the label flow from Module 2, running on a cluster that did not exist 40 minutes ago.
+
+Confirm the policies followed the labels:
+
+[source,role="execute"]
+----
+oc get policy -n spoke-aws-1
+----
+
+----
+NAME                                             REMEDIATION ACTION   COMPLIANCE STATE   AGE
+policies-autoshift.policy-dns-tolerations        enforce              Compliant          123m
+policies-autoshift.policy-nfd-instance-deploy    enforce              Compliant          158m
+policies-autoshift.policy-nfd-operator-install   enforce              Compliant          158m
+----
+
+`policy-nfd-operator-install` reporting `Compliant` means Node Feature Discovery is installed and running on the spoke. You declared it in Module 3 against a cluster that did not exist, and never touched that cluster again.
+
+=== Verify
+
+Confirm the `ClusterDeployment` reports installed:
+
+[source,role="execute"]
+----
+oc get clusterdeployment spoke-aws-1 -n spoke-aws-1 \
+  -o jsonpath='{.spec.installed}{"\n"}'
+----
+
+----
+true
+----
+
+== Teardown
+
+[WARNING]
+====
+*Destroy the cluster now.* Leaving it running keeps billing. This step is not optional.
+====
+
+Teardown takes 2 steps, and the order matters. Doing either one alone leaves you with a running cluster.
+
+[IMPORTANT]
+====
+`createCluster: 'false'` does **not** destroy anything.
+
+Read the policy and you can see why: every cluster-install manifest is wrapped in `{{- if ... eq "true" }}`, so the flag only controls whether the policy *emits* the ClusterDeployment. There is no deletion behaviour in the policy at all. Set it to `'false'` on its own and the ClusterDeployment stays exactly where it is, the cluster keeps running, and the bill keeps growing.
+
+Deleting the ClusterDeployment on its own does not work either. While `createCluster` is still `'true'`, the policy is in `enforce` and simply recreates it.
+====
+
+*Step 1. Stop the policy managing the cluster.* Set `createCluster` to `'false'` in `autoshift/values/clusters/spoke-aws-1.yaml`:
+
+[source,yaml]
+----
+      clusterInstall:
+        createCluster: 'false'
+----
+
+Apply, remembering all 4 values files:
+
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+Wait until the change reaches the rendered config. Until it does, the policy will still recreate anything you delete:
+
+[source,role="execute",subs="attributes"]
+----
+oc get configmap spoke-aws-1.rendered-config -n {policy_namespace} \
+  -o jsonpath='{.data.config}' | grep createCluster
+----
+
+----
+    createCluster: "false"
+----
+
+*Step 2. Delete the ClusterDeployment.* This is what actually triggers the destroy. Hive runs an uninstall job that removes the EC2 instances, NAT gateways, Elastic IPs, Route 53 records, and the virtual private cloud:
+
+[source,role="execute"]
+----
+oc delete clusterdeployment spoke-aws-1 -n spoke-aws-1
+----
+
+Watch it deprovision. This takes roughly 10 to 15 minutes:
+
+[source,role="execute"]
+----
+oc get clusterdeployment -n spoke-aws-1 -w
+----
+
+The AWS resources are fully removed once that job completes. You can confirm it directly:
+instances, virtual private clouds, and Elastic IPs for the cluster are all released.
+
+*Step 3. Detach the cluster and remove its namespace.* Destroying the cloud resources does not
+remove the hub-side objects. The `ManagedCluster` remains, flipping to `AVAILABLE: Unknown`, and
+its namespace stays behind:
+
+[source,role="execute"]
+----
+oc get managedcluster spoke-aws-1
+----
+
+----
+NAME          HUB ACCEPTED   JOINED   AVAILABLE   AGE
+spoke-aws-1   true           True     Unknown     22h
+----
+
+This is the same behaviour the warning above describes. The prereqs policy created the
+`ManagedCluster`, and with `createCluster: 'false'` the policy has simply stopped managing it —
+nothing deletes it. Remove it and the namespace explicitly:
+
+[source,role="execute"]
+----
+oc delete managedcluster spoke-aws-1
+oc delete namespace spoke-aws-1
+----
+
+=== Verify teardown
+
+Confirm the namespace is gone. Test the namespace itself: `oc get pods` in an empty namespace
+still exits 0, so it cannot tell you whether the namespace exists:
+
+[source,role="execute"]
+----
+oc get namespace spoke-aws-1 || echo "namespace gone"
+----
+
+----
+namespace gone
+----
+
+And confirm the cluster has left the fleet:
+
+[source,role="execute"]
+----
+oc get managedcluster
+----
+
+----
+NAME            HUB ACCEPTED   JOINED   AVAILABLE   AGE
+local-cluster   true           True     True        22h
+----
+
+== Troubleshooting
+
+=== ClusterDeployment stuck and not progressing
+
+Find the provision pod and read the installer log. Read the `installer` container, not `hive`:
+the `hive` container only stages binaries and its log holds nothing about the failure.
+
+[source,role="execute"]
+----
+oc get pods -n spoke-aws-1
+----
+
+[source,role="execute"]
+----
+oc logs -n spoke-aws-1 \
+  $(oc get pods -n spoke-aws-1 -o name | grep provision) \
+  -c installer --tail=60 | grep -iE 'error|failed'
+----
+
+Common causes:
+
+* *IAM permissions missing.* The AWS user needs permissions to create VPCs, EC2 instances, Elastic Load Balancers, Route 53 records, S3 buckets, and IAM roles. Check the Hive log for `AccessDenied` errors.
+* *Route 53 hosted zone absent.* The `baseDomain` must be a Route 53 hosted zone in the same AWS account. If the zone does not exist, the installer cannot create DNS records and fails at validation.
+* *Credentials wrong.* If the `aws_access_key_id` or `aws_secret_access_key` values are incorrect, Hive returns an `AuthFailure` from the AWS API. The Hive log names it clearly.
+* *Provision retries exhausted.* The example file sets `installAttemptsLimit: 3`. If all 3 attempts fail, the `ClusterDeployment` condition reports `ProvisionFailed`. Read the log from the last provision pod.
+
+=== FIPS install fails during bootstrap
+
+If the provision log shows an error about the SSH key algorithm, the key is the wrong type. Ed25519 keys are not supported in FIPS mode.
+
+Delete the existing secret, generate a correct key, and recreate the secret:
+
+[source,role="execute"]
+----
+oc delete secret aws-creds -n cluster-install-secrets
+----
+
+The key from Module 3 is still on disk, and `ssh-keygen` stops to ask before overwriting it, so
+remove it first:
+
+[source,role="execute"]
+----
+rm -f ~/.ssh/ocp-cluster ~/.ssh/ocp-cluster.pub
+ssh-keygen -t ecdsa -b 521 -N '' -f ~/.ssh/ocp-cluster
+----
+
+Then re-run the secret creation step from Module 3, Exercise 2, with the corrected key.
+
+=== ClusterDeployment shows installed but ManagedCluster is absent
+
+ACM imports the cluster after Hive marks it installed. If the `ManagedCluster` does not appear within a few minutes, check the ACM import conditions on the `ClusterDeployment`:
+
+[source,role="execute"]
+----
+oc get clusterdeployment spoke-aws-1 -n spoke-aws-1 \
+  -o jsonpath='{range .status.conditions[*]}{.type}{": "}{.message}{"\n"}{end}'
+----
+
+Look for `SyncSetFailed` or `ClusterImportFailed` conditions. The `KlusterletAddonConfig` must also exist in the cluster namespace:
+
+[source,role="execute"]
+----
+oc get klusterletaddonconfig -n spoke-aws-1
+----
+
+If it is absent, the prereqs policy did not complete. Check that policy for errors:
+
+[source,role="execute"]
+----
+oc describe configurationpolicy policy-cluster-install-prereqs \
+  -n local-cluster
+----
+
+=== Policies from earlier modules are not applying to the new cluster
+
+Confirm the `cluster-labels` policy stamped the correct clusterset label:
+
+[source,role="execute"]
+----
+oc get managedcluster spoke-aws-1 \
+  -o jsonpath='{.metadata.labels.cluster\.open-cluster-management\.io/clusterset}{"\n"}'
+----
+
+If the label is wrong or absent, the cluster is not in the right clusterset. Confirm `config.clusterSet: managed` is set in `spoke-aws-1.yaml` and that the Helm upgrade applied cleanly. Then confirm the `cluster-set.managed` ConfigMap exists in the policy namespace:
+
+[source,role="execute",subs="attributes"]
+----
+oc get configmap cluster-set.managed -n {policy_namespace}
+----
+
+----
+NAME                  DATA   AGE
+cluster-set.managed   2      ...
+----
+
+If the ConfigMap is absent, the `cluster-labels` policy has no label data to read for the `managed` clusterset. Confirm `autoshift/values/clustersets/managed-minimal.yaml` is included in the `helm upgrade` command and that ArgoCD has synced.
+
+== Learning Outcomes
+
+By completing this module, you should now understand:
+
+* ✓ The cluster-install policy chain reads all AWS credentials, SSH keys, and the pull secret from a single source secret in `cluster-install-secrets`. The single-secret shape matches what the ACM console produces, and the values file references it through 4 separate fields: `credentialRef`, `sshPrivateKeyRef`, `sshKeyRef`, and `pullSecretRef`
+* ✓ FIPS mode forbids ed25519 SSH keys. The install fails at bootstrap validation, and the failure message does not name the key algorithm directly. ECDSA or RSA must be chosen before the secret is created
+* ✓ `config.clusterSet` is the only values file field that determines what a provisioned cluster becomes. The full label flow from Module 2 runs automatically the moment the cluster registers as a `ManagedCluster`, with no manual intervention
+
+[.solve-button-placeholder]#solve-button-placeholder#
+
+[.validate-button-placeholder]#validate-button-placeholder#

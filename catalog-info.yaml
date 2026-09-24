@@ -1,0 +1,51 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ph-openshift-autoshift
+  title: ph-openshift-autoshift
+  description: "Hands-on workshop teaching platform engineers to govern OpenShift
+    clusters at scale using Red Hat ACM, OpenShift GitOps (Argo CD), and the
+    AutoShift IaC framework. 10 modules (~4 hours) progress from hub bootstrap
+    through fleet operations.  Participants learn to manage fleet-wide
+    configuration through a label-driven policy model: enabling operators with
+    labels alone, authoring PolicyGenerator policies, publishing to OCI
+    registries (including disconnected environments), and provisioning AWS spoke
+    clusters that inherit configuration automatically.  Key topics: ACM + GitOps
+    bootstrap, label-driven operator management, per-cluster config overrides,
+    custom PolicyGenerator authoring with Kustomize, OCI publishing via Red Hat
+    Quay, gradual rollout strategies, hub-of-hubs patterns, and spoke cluster
+    lifecycle.  AWS is required — the lab provisions a real AWS spoke cluster to
+    demonstrate multi-cluster fleet management, and the hub runs ODF (NooBaa
+    MCG) on AWS storage.  Technologies: OpenShift, ACM, Argo CD, Helm,
+    OLM/OperatorPolicy, PolicyGenerator, Quay, ODF, AWS.  Target: Platform
+    engineers and SREs. Intermediate pace — assumes comfort with OpenShift,
+    Helm, and Git."
+  annotations:
+    ph.rhdp.io/content-type: lab
+    ph.rhdp.io/deployment-mode: rhdp_published
+    ph.rhdp.io/github-user: bcarr-rh
+    ph.rhdp.io/owner: psrivast@redhat.com
+    ph.rhdp.io/migrated-repo: https://github.com/auto-shift/autoshift-showroom
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: rhpds/ph-openshift-autoshift
+    ph.rhdp.io/created-at: 2026-09-24T01:49:08.147Z
+  tags:
+    - publishing-house
+    - lab
+    - rhdp-published
+    - migration
+  links:
+    - url: https://github.com/rhpds/ph-openshift-autoshift
+      title: Repository
+      icon: github
+    - url: https://devspaces.apps.ocpv-infra02.wdc07.infra.demo.redhat.com#https://github.com/rhpds/ph-openshift-autoshift
+      title: Open in DevSpaces
+      icon: catalog
+    - url: https://central-api-publishing-house.apps.ocpv-infra02.wdc07.infra.demo.redhat.com
+      title: Central
+      icon: dashboard
+spec:
+  type: content
+  lifecycle: experimental
+  owner: rhdp-team
+  system: publishing-house

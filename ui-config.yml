@@ -1,0 +1,20 @@
+---
+type: showroom
+
+# Set the left column width to 30%
+default_width: 30
+# Persist the URL state so browser refresh doesn't reset the UI
+persist_url_state: true
+
+view_switcher:
+  enabled: true
+  default_mode: split
+
+tabs:
+  - name: Terminal
+    path: /wetty
+    port: 443
+  - name: OpenShift Console
+    url: 'https://console-openshift-console.${DOMAIN}'
+  - name: Argo CD
+    url: 'https://openshift-gitops-server-openshift-gitops.${DOMAIN}'

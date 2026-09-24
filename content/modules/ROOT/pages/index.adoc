@@ -1,0 +1,85 @@
+= Getting to know AutoShift
+include::partial$_attributes.adoc[]
+:navtitle: Home
+
+AutoShift is an Infrastructure-as-Code framework for governing OpenShift clusters at scale.
+It uses Red Hat Advanced Cluster Management (ACM) and OpenShift GitOps to deploy ACM policies as individual charts, covering Day 2 configuration across a hub and its managed clusters.
+
+The problem this lab addresses is concrete.
+A fleet that is hand-configured does not stay consistent.
+Cluster drift accumulates silently.
+Rolling a change across dozens of clusters requires coordination you cannot automate without a shared representation of intent.
+You need a mechanism where a single change in a values file propagates correctly and reproducibly to every affected cluster, with no manual steps in between.
+
+AutoShift provides that mechanism.
+This lab teaches you how the machinery works, how to operate it, and how to extend it.
+
+== What you will learn
+
+* Bootstrap ACM, OpenShift GitOps, and AutoShift on a hub cluster
+* Trace a label from a values file through to a policy applied on a cluster
+* Enable, pin, and disable a product with labels alone
+* Author a PolicyGenerator policy and render it the way the Config Management Plugin (CMP) does
+* Publish and consume AutoShift from an Open Container Initiative (OCI) registry, including disconnected environments
+
+== Who this is for
+
+Platform engineers and site reliability engineers (SREs) who run OpenShift fleets.
+The lab assumes you are comfortable with OpenShift, Helm, and Git.
+Prior ACM or OpenShift GitOps experience is not required, but the lab moves at an intermediate pace and does not slow down to explain Kubernetes primitives.
+
+== Prerequisites
+
+* An OpenShift cluster with cluster-admin access. Validated on {ocp_version}
+* Helm 3.x installed on your workstation
+* The `oc` CLI configured and authenticated
+* Git and standard shell tools (`make`, `curl`, `jq`, `yq`)
+* Go {go_version} or later (required for Module 7)
+
+== Workshop environment
+
+The lab starts on a single hub cluster, which manages itself as `local-cluster`.
+In module 3 you declare a spoke cluster on AWS and AutoShift provisions it while you continue
+with the other modules; module 10 verifies it inherited its configuration and tears it down.
+You clone the AutoShift repository and drive everything from your terminal using `helm` and `oc`.
+
+The key versions in this lab:
+
+[cols="2,2",options="header"]
+|===
+|Component |Version this lab was validated on
+
+|OpenShift
+|{ocp_version} (your cluster may be newer)
+
+|ACM channel
+|{acm_channel}
+
+|OpenShift GitOps channel
+|{gitops_channel}
+|===
+
+== Estimated time
+
+Approximately 4 hours 5 minutes.
+The modules build on each other but are structured so you can stop and resume between them.
+
+== Modules
+
+[cols="1,4,1",options="header"]
+|===
+|# |Topic |Duration
+
+|1 |Bootstrap: install ACM, OpenShift GitOps, and AutoShift |~30 min
+|2 |Label flow: trace a label from values file to cluster |~20 min
+|3 |Start the long-running builds: a registry and an AWS cluster |~20 min
+|4 |Enable a feature: control which versions an operator may run |~30 min
+|5 |Config blocks and overrides: structured config beyond labels |~20 min
+|6 |Operate and troubleshoot: diagnostics and the dry-run safety switch |~30 min
+|7 |Author a PolicyGenerator policy: scaffold, render, and validate |~30 min
+|8 |OCI and disconnected: publish to the registry from module 3 |~30 min
+|9 |Fleet operations capstone: rollouts, upgrades, and hub-of-hubs |~20 min
+|10 |Your spoke cluster joined the fleet: verify inheritance, tear down |~15 min
+|===
+
+Start with xref:01-overview.adoc[Overview] to understand the architecture before running any commands.

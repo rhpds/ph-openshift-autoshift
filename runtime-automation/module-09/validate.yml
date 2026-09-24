@@ -1,0 +1,48 @@
+- name: Module 9 Validate
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    policy_ns: policies-autoshift
+  tasks:
+    - name: List the clustersets on the hub
+      ansible.builtin.shell: "oc get managedclusterset --no-headers | awk '{print $1}'"
+      register: sets
+      changed_when: false
+      failed_when: false
+
+    - name: Count the upgrade policies AutoShift ships
+      ansible.builtin.shell: "oc get policy -n {{ policy_ns }} --no-headers | grep -c openshift-upgrade"
+      register: upg
+      changed_when: false
+      failed_when: false
+
+    - name: Read the clusterset local-cluster belongs to
+      ansible.builtin.shell: >-
+        oc get managedcluster local-cluster --show-labels --no-headers
+        | tr ',' '\n' | sed -n 's|^cluster.open-cluster-management.io/clusterset=||p'
+      register: cs
+      changed_when: false
+      failed_when: false
+
+    # A single validation_check per module. The action plugin accepts only
+    # pass_msg/error_msg (never msg) and returns on the first failing check, so
+    # every condition is folded into one check and the detail goes into one
+    # report. buttons.js turns each ✅/❌ line into a step chip.
+    - name: Evaluate the checks
+      ansible.builtin.set_fact:
+        _sets_ok: "{{ 'hub' in (sets.stdout_lines | default([])) }}"
+        _upg_ok: "{{ (upg.stdout | default('0') | int) >= 1 }}"
+        _cs_ok: "{{ cs.stdout | default('') | length > 0 }}"
+
+    - name: Build the report
+      ansible.builtin.set_fact:
+        _report: |
+          {{ '✅' if _sets_ok else '❌' }} The hub clusterset exists ({{ sets.stdout_lines | default([]) | join(', ') or 'none' }})
+          {{ '✅' if _upg_ok else '❌' }} The openshift-upgrade policies are present on the hub ({{ upg.stdout | default(0) }} found)
+          {{ '✅' if _cs_ok else '❌' }} local-cluster belongs to a clusterset, so gradual rollout can move it ({{ cs.stdout | default('none') or 'none' }})
+
+    - validation_check:
+        check: "{{ _sets_ok and _upg_ok and _cs_ok }}"
+        pass_msg: "{{ _report }}"
+        error_msg: "{{ _report }}"

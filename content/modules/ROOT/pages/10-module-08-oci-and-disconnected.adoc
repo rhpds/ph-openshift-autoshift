@@ -1,0 +1,835 @@
+= OCI publishing and disconnected environments
+include::partial$_attributes.adoc[]
+:navtitle: Module 8: OCI publishing and disconnected environments
+
+Module 7 ended with you validating a new policy through the integration test. That test runs exactly what happens inside the Argo CD repo server when ArgoCD syncs a PolicyGenerator directory in git mode: kustomize, the PolicyGenerator plugin, hub template resolution, and a label contract check. This module covers what happens to those same directories at release time. They are pre-rendered into stock Helm charts, packaged as Open Container Initiative (OCI) artifacts, and pushed to a registry. Consumers pull them without needing a Config Management Plugin (CMP) sidecar at all.
+
+[mermaid]
+....
+flowchart TD
+  subgraph git["Git mode (default)"]
+    direction TB
+    G1["policies/tier/*<br/>kustomization.yaml"] -->|"ApplicationSet<br/>git files generator"| G2["Argo CD Application<br/>per policy dir"]
+    G2 -->|"repo-server<br/>CMP sidecar"| G3["PolicyGenerator<br/>renders at sync time"]
+  end
+  subgraph oci["OCI mode"]
+    direction TB
+    O1["make render-policy-charts<br/>at release time"] -->|"one Helm chart<br/>per PG dir"| O2[".helm-charts/policies/"]
+    O2 -->|"make push-charts"| O3["OCI registry"]
+    O3 -->|"ApplicationSet<br/>list generator"| O4["Argo CD Application<br/>per chart"]
+  end
+....
+
+[WARNING]
+====
+*Read this before running anything.*
+
+Exercise 1 has an optional full path (Part 2) that installs OpenShift Data Foundation (ODF) Multi-Cloud Gateway (MCG) in standalone mode and Red Hat Quay on the lab cluster. That path needs real cluster headroom and takes around 40 minutes.
+
+3 fallbacks are available. Any one of them is a complete and legitimate path through this module:
+
+*Fallback A: local render only.* Run `make render-policy-charts VERSION=0.0.0-dev` and inspect the output under `.helm-charts/policies/`. No registry, no ODF, no Quay. This covers the PolicyGenerator-to-Helm transformation, which is the core concept.
+
+*Fallback B: dry run push.* After the render, run `make push-charts DRY_RUN=true VERSION=0.0.0-dev`. This prints exactly what would be pushed and where, with no registry connection required.
+
+*Fallback C: inspect the published release.* AutoShift's canonical release is already published at `oci://quay.io/autoshift/`. You can pull and inspect those artifacts without deploying anything.
+
+Fallbacks A and B together cover the same conceptual ground as the full path.
+====
+
+== Learning objectives
+
+image::autoshift-oci-disconnected.svg[Releases are assembled on a connected machine, mirrored, and carried into the disconnected site]
+
+By the end of this module, you'll be able to:
+
+* Render every PolicyGenerator directory into stock Helm charts and explain why OCI mode needs no CMP sidecar
+* Publish AutoShift to an OCI registry and redeploy from it, observing the ApplicationSet switch generators
+* Flip an entire fleet to mirrored catalog sources with 2 labels, and explain how the mirror list is derived
+
+== Exercise 1, Part 1: Render PolicyGenerator directories into Helm charts
+
+In git mode, the Argo CD repo server's CMP sidecar renders each PolicyGenerator (PG) directory at sync time. The CMP init-container image is resolved by a render-time lookup of ACM's `multicluster-operators-hub-subscription` deployment. Without ACM running, that lookup fails, the init-container cannot start, and every PG policy stays unrendered. This is why source installs require ACM before GitOps.
+
+In OCI mode, the render happens at release time. The `make render-policy-charts` target runs kustomize with the PolicyGenerator plugin against every PG directory in the repository and writes the result as a packaged Helm chart into `.helm-charts/policies/`. By the time ArgoCD pulls the chart from the registry, all PolicyGenerator processing is already done. No CMP sidecar is configured, and the ACM-before-GitOps ordering constraint disappears. OCI installations can bootstrap GitOps before ACM without issue.
+
+=== Install the toolchain
+
+Install kustomize and the PolicyGenerator plugin into `.tools/` if you have not done so this session:
+
+[source,role="execute"]
+----
+make install-policy-generator
+----
+
+The target installs a repo-local kustomize binary into `.tools/kustomize` and the PolicyGenerator plugin binary into `.tools/kustomize-plugin/policy.open-cluster-management.io/v1/policygenerator/PolicyGenerator`. Nothing is written to system paths.
+
+=== Render the charts
+
+Run the render. `VERSION` is stamped into each rendered chart's `Chart.yaml`. For a local inspection any version string in `X.Y.Z` format works:
+
+[source,role="execute"]
+----
+make render-policy-charts VERSION=0.0.0-dev
+----
+
+The target iterates every PG directory under `policies/` (directories containing `policy-generator-config.yaml` but no `Chart.yaml`) and writes a packaged Helm chart for each one into `.helm-charts/policies/` as `<name>-<version>.tgz`.
+
+The 4 Helm holdouts are not in that output. They are already Helm charts in the source tree, so `render-policy-charts` has nothing to convert; `make package-charts` handles them separately at release time.
+
+List the rendered output:
+
+[source,role="execute"]
+----
+ls .helm-charts/policies/
+----
+
+=== Compare a source directory with its rendered chart
+
+Pick the `advanced-cluster-management` policy, which is a PG directory, and compare it with its rendered output:
+
+. Inspect the source directory:
++
+[source,role="execute"]
+----
+ls policies/stable/advanced-cluster-management/
+----
++
+The source tree contains `kustomization.yaml`, `policy-generator-config.yaml`, `placement.yaml`, and `manifests/`. These are the kustomize inputs.
+
+. Inspect the rendered chart:
++
+[source,role="execute"]
+----
+tar tzf .helm-charts/policies/advanced-cluster-management-0.0.0-dev.tgz | head
+----
++
+----
+advanced-cluster-management/Chart.yaml
+advanced-cluster-management/values.yaml
+advanced-cluster-management/templates/policies.yaml
+advanced-cluster-management/files/rendered.yaml
+----
++
+The rendered output is a standard Helm chart. ArgoCD pulls this from the registry and runs `helm template` on it. No kustomize, no PolicyGenerator plugin, no CMP sidecar is involved.
+
+. Confirm the chart version:
++
+[source,role="execute"]
+----
+helm show chart .helm-charts/policies/advanced-cluster-management-0.0.0-dev.tgz | grep '^version:'
+----
++
+----
+version: 0.0.0-dev
+----
+
+=== Dry run push (Fallback B)
+
+To see what `push-charts` would push without sending anything to a registry:
+
+[source,role="execute"]
+----
+make push-charts DRY_RUN=true VERSION=0.0.0-dev
+----
+
+----
+[WARN] DRY RUN: Skipping push to registry
+Bootstrap charts would be pushed to: oci://quay.io/autoshift/bootstrap
+Main chart would be pushed to: oci://quay.io/autoshift
+Policy charts would be pushed to: oci://quay.io/autoshift/policies
+----
+
+`REGISTRY` defaults to `quay.io` and `REGISTRY_NAMESPACE` defaults to `autoshift`. Override both when publishing to a different registry.
+
+The registry structure is fixed: bootstrap charts go under `/bootstrap`, the main `autoshift` chart goes at the root, and every policy chart goes under `/policies/<name>`.
+
+=== Verify
+
+Confirm the render produced Helm chart output:
+
+[source,role="execute"]
+----
+test -f .helm-charts/policies/advanced-cluster-management-0.0.0-dev.tgz && echo OK
+----
+
+----
+OK
+----
+
+Count the rendered charts. `render-policy-charts` writes each one as a packaged `.tgz`, not an unpacked directory, and the version you passed is part of the filename:
+
+[source,role="execute"]
+----
+ls .helm-charts/policies/ | wc -l
+----
+
+The count should be greater than 0. The exact number depends on how many policies are in the repository at the time you run this.
+
+== Exercise 1, Part 2 (Optional): Install a registry with AutoShift, then publish and redeploy
+
+[NOTE]
+====
+This part requires real cluster headroom and takes around 40 minutes. If you are working on a shared or constrained cluster, use Fallback A, B, or C from the warning at the top of this module. They cover the same concepts.
+====
+
+The goal is self-referential: AutoShift installs the Quay registry, you publish AutoShift into it, and then you redeploy AutoShift from it.
+
+ODF MCG in standalone mode brings up only NooBaa's object storage. It does not install Ceph and does not need dedicated storage nodes. The `odf-multi-cloud-gateway: standalone` label activates a separate placement at `policies/stable/openshift-data-foundation/placement-odf-standalone.yaml`. Red Hat Quay's `QuayRegistry` CR ships with `objectstorage: managed: true`, which NooBaa satisfies. The Quay policy also runs a `create-admin-user` Job and creates a `ConsoleLink`, so the registry is reachable with working credentials as soon as deployment completes.
+
+=== Step 1: Add the ODF and Quay labels
+
+Add these labels under the `hub:` clusterset in `autoshift/values/clustersets/hub-minimal.yaml`. They belong at the same indentation level as existing labels in the `hubClusterSets.hub.labels:` block:
+
+[source,yaml]
+----
+      odf: 'true'
+      odf-subscription-name: odf-operator
+      odf-channel: stable-4.22
+      odf-source: redhat-operators
+      odf-source-namespace: openshift-marketplace
+      odf-multi-cloud-gateway: standalone
+
+      quay: 'true'
+      quay-subscription-name: quay-operator
+      quay-channel: stable-3.18
+      quay-source: redhat-operators
+      quay-source-namespace: openshift-marketplace
+----
+
+AutoShift ships no bootstrap Job, so the first Quay user is created through the registry API. That
+endpoint is only reachable when both flags are set before the registry rolls out. Add a `config:`
+block to the same `hub:` clusterset, as a sibling of `labels:`:
+
+[source,yaml]
+----
+    config:
+      quay:
+        bootstrap:
+          userInitialize: true
+          xhrOnly: false
+----
+
+Set both back to their defaults after the workshop. They exist to bootstrap a registry that has no
+identity provider in front of it; a production deployment uses OpenID Connect instead.
+
+Do not set `odf-version` or `quay-version`. Setting a version pin feeds that value into the OperatorPolicy's ClusterServiceVersion (CSV) allow-list and constrains which CSVs OLM is permitted to install. If the pinned version is not what OLM wants to install on the current channel, the OperatorPolicy stays `NonCompliant` until the channel produces that exact CSV. Leave the allow-list open and let OLM choose the current version.
+
+=== Step 2: Apply
+
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+=== Step 3: Wait for NooBaa
+
+The ODF MCG standalone placement selects `local-cluster`. ACM propagates the policy there. The OperatorPolicy installs the ODF operator. ODF creates a NooBaa instance. Watch for it to become available:
+
+[source,role="execute"]
+----
+oc wait noobaa/noobaa -n openshift-storage \
+  --for=condition=Available --timeout=20m
+----
+
+=== Step 4: Wait for the QuayRegistry
+
+After the Quay OperatorPolicy reaches `Compliant`, the operator creates a `QuayRegistry`. Wait for it:
+
+[source,role="execute"]
+----
+oc wait quayregistry --all -n quay-enterprise \
+  --for=condition=Available --timeout=20m
+----
+
+After the `QuayRegistry` is ready, the `create-admin-user` Job runs and the `ConsoleLink` is created.
+
+=== Step 5: Retrieve the registry route
+
+Get the Quay route hostname. Name the route rather than taking the first one in the namespace: the Quay Operator creates several routes there, and the registry endpoint is `registry-quay`, matching the `QuayRegistry` named `registry` that the policy deploys:
+
+[source,role="execute"]
+----
+oc get route registry-quay -n quay-enterprise \
+  -o jsonpath='{.spec.host}{"\n"}'
+----
+
+Set it in your shell:
+
+[source,role="execute"]
+----
+QUAY_ROUTE=$(oc get route registry-quay -n quay-enterprise \
+  -o jsonpath='{.spec.host}')
+----
+
+AutoShift runs no bootstrap Job, so no user exists yet and no credential Secret is created for you.
+Creating the first user in Red Hat Quay is an API-only operation, which is why the values file sets
+`userInitialize: true` and `xhrOnly: false`. You set those in Module 3, or in Step 1 if you installed
+the registry here.
+
+Create the superuser now. Choose your own password:
+
+[source,role="execute"]
+----
+QUAY_ROUTE=$(oc get route registry-quay -n quay-enterprise -o jsonpath='{.spec.host}')
+QUAY_PASSWORD='workshopQuay1!'
+
+QUAY_INIT=$(curl -sk -X POST "https://${QUAY_ROUTE}/api/v1/user/initialize" \
+  -H 'Content-Type: application/json' \
+  --data "{\"username\":\"quayadmin\",\"password\":\"${QUAY_PASSWORD}\",\"email\":\"quayadmin@example.com\",\"access_token\":true}")
+
+echo "$QUAY_INIT"
+QUAY_TOKEN=$(printf '%s' "$QUAY_INIT" \
+  | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+
+test -n "$QUAY_TOKEN" && echo "token captured" || echo "NO TOKEN: read the response above"
+----
+
+The response contains an `access_token`, captured above as `$QUAY_TOKEN`. Confirm `token captured`
+before moving on, because Step 8 uses it to create the organization you push into and an empty
+token surfaces there as a `401`, which reads like a password problem and is not one.
+
+The endpoint refuses to run once any user exists, so it cannot be replayed: a second call returns
+`Cannot initialize user in a non-empty database`. If you see that on your first call, a user already
+exists and you will need those credentials rather than the ones you just chose.
+
+The `ConsoleLink` created by the Quay policy is visible in the OpenShift web console under the
+application launcher.
+
+Read the registry route:
+
+[source,role="execute"]
+----
+oc get route registry-quay -n quay-enterprise -o jsonpath='{.spec.host}{"\n"}'
+----
+
+=== Step 6: Enable the cluster CA bundle for ArgoCD
+
+The Quay route uses the cluster's ingress certificate. ArgoCD's repo server does not trust it by default. Setting `gitops-cluster-ca-bundle: 'true'` causes AutoShift to:
+
+. Create a `user-ca-bundle` ConfigMap in the ArgoCD namespace, annotated with `config.openshift.io/inject-trusted-cabundle: "true"`.
+. OpenShift populates that ConfigMap with the cluster's trusted CA certificates.
+. AutoShift mounts it into the ArgoCD repo server at `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`.
+
+Your cluster's ingress CA must already be in the cluster trust store for the injection to include it. If you have added it via the cluster-wide proxy configuration, this step works automatically.
+
+Add the label to `hub-minimal.yaml`:
+
+[source,yaml]
+----
+      gitops-cluster-ca-bundle: 'true'
+----
+
+Apply and wait for the repo server rollout:
+
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+[source,role="execute"]
+----
+oc rollout status deployment/infra-gitops-repo-server -n openshift-gitops
+----
+
+[NOTE]
+====
+The Argo CD instance AutoShift runs is named by `argoName` in
+`policies/stable/openshift-gitops/values.yaml`, which defaults to `infra-gitops`. Every workload it
+owns is prefixed with that name, so the repo server is `infra-gitops-repo-server`, not
+`argocd-repo-server`. The repo server itself runs under the `default` service account.
+====
+
+=== Step 7: Log in to the registry
+
+[source,role="execute"]
+----
+helm registry login $QUAY_ROUTE
+----
+
+Enter `quayadmin` and the password you chose in Step 5 when prompted.
+
+=== Step 8: Render and push
+
+Re-render with a real version string, then push. `REGISTRY` takes the route hostname without a protocol prefix.
+
+. Create the `autoshift` organization. Red Hat Quay creates repositories on first push but never creates organizations, so the namespace has to exist before any chart lands in it:
++
+[source,role="execute"]
+----
+curl -sk -X POST "https://${QUAY_ROUTE}/api/v1/organization/" \
+  -H "Authorization: Bearer ${QUAY_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data '{"name":"autoshift","email":"autoshift@example.com"}'
+----
++
+----
+"Created"
+----
++
+Re-running it returns `A user or organization with this name already exists`, which is harmless.
+
+. Clear the charts rendered in Part 1. They were built at `0.0.0-dev`, and `push-charts` pushes everything in `.helm-charts/` by glob — leave them and you publish a junk `0.0.0-dev` tag for every policy alongside the real one, at double the push time:
++
+[source,role="execute"]
+----
+make clean
+----
+
+. Stamp `0.1.0` into every `Chart.yaml` in the tree. `render-policy-charts` writes the version it is given, but `package-charts` packages each hand-authored chart at whatever version its own `Chart.yaml` carries, which is `0.0.1`. Without this the 4 Helm holdouts publish as `0.0.1` while Step 9 asks for `0.1.0`, and their Argo CD Applications fail to resolve:
++
+[source,role="execute"]
+----
+make update-versions VERSION=0.1.0
+----
++
+This rewrites files in your clone. That is fine here: the clone is scratch, and nothing is pushed back to GitHub.
+
+. Render the PolicyGenerator directories to Helm charts:
++
+[source,role="execute"]
+----
+make render-policy-charts VERSION=0.1.0
+----
+
+. Package the bootstrap charts and the 4 Helm holdouts. `render-policy-charts` writes only `.helm-charts/policies/`, and `push-charts` also expects `.helm-charts/bootstrap/`. Skip this and the push fails on its first action with `.helm-charts/bootstrap/*.tgz: no such file`, retried 5 times before it gives up:
++
+[source,role="execute"]
+----
+make package-charts VERSION=0.1.0
+----
++
+The closing count reads `0 bootstrap + 0 policies + 1 main`. Those first 2 numbers are always 0: Make expands them before the directories exist. The `ls` listings above them are the real output.
+
+. Write the deploy list that OCI mode reads. `autoshift/files/` is not in git, and no target you have run so far creates it. Skip this and Step 9 renders an ApplicationSet with 1 empty entry: `helm` exits 0, Argo CD reports no error, and not a single policy is deployed:
++
+[source,role="execute"]
+----
+make generate-policy-list VERSION=0.1.0
+----
++
+----
+✓ Generated policy-list.txt (2 helm + 51 rendered PolicyGenerator)
+----
+
+. Push:
++
+[source,role="execute"]
+----
+make push-charts VERSION=0.1.0 REGISTRY=$QUAY_ROUTE
+----
+
+[NOTE]
+====
+`REGISTRY_NAMESPACE` defaults to `autoshift`, which is why no override appears on the push command.
+That default is an *organization* name, and it only resolves because you created the organization a
+moment ago. Skip that step and every chart fails with `401 UNAUTHORIZED`, which reads like a
+credentials problem and is not one: the namespace simply does not exist.
+
+If you cannot create an organization, for example on a registry where you are not a superuser, push
+under your own user namespace instead by adding `REGISTRY_NAMESPACE=quayadmin`. A user namespace
+always exists. Every path below, and in Step 9, changes to match.
+====
+
+Every path is built from `REGISTRY_NAMESPACE`, so the target pushes bootstrap charts to `oci://$QUAY_ROUTE/autoshift/bootstrap`, the main chart to `oci://$QUAY_ROUTE/autoshift`, and every policy chart to `oci://$QUAY_ROUTE/autoshift/policies`. That is the same layout as the published release at `oci://quay.io/autoshift/`, which is the point of keeping the default.
+
+`push-charts` finds the bootstrap and policy charts by glob, but it looks for the main chart as `autoshift-0.1.0.tgz` by exact name and skips it silently if that file is missing. `make update-versions` is what guarantees the name matches. This sequence is the same work `make release` does, minus the release-only steps: a git tag, the mirror artifacts, and the bootstrap installer scripts. Do not run `make release` here.
+
+=== Step 9: Redeploy AutoShift from OCI
+
+Switch AutoShift to OCI mode by setting `autoshiftOciRegistry: true` and pointing `autoshiftOciRepo` at your registry:
+
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml \
+  --set autoshiftOciVersion=0.1.0 \
+  --set "autoshiftOciRepo=oci://$QUAY_ROUTE/autoshift/policies"
+----
+
+[NOTE]
+====
+`autoshiftOciRepo` alone selects OCI mode: 1 value both chooses the mode and supplies the address,
+so there is no way to set half of it. An older boolean, `autoshiftOciRegistry`, still works and
+still decides the mode when present, but it is deprecated. Setting it stamps an
+`autoshift.io/deprecated-values` annotation onto the ApplicationSet you inspect in Step 10.
+
+`autoshiftOciVersion` is required in OCI mode and must match the `VERSION` you pushed. The chart
+rejects the upgrade without it, because a mutable `latest` tag is unreliable with Argo CD OCI.
+====
+
+
+=== Step 10: Observe the ApplicationSet switch
+
+In git mode the ApplicationSet uses a `git:` generator that auto-discovers `+policies/*+` directories. In OCI mode it switches to a `list:` generator that reads `autoshift/files/policy-list.txt`, the file you generated in Step 8: it contains 1 policy name per line, 1 entry per chart in `.helm-charts/policies/`. The ApplicationSet creates 1 Argo CD Application per entry and pulls the corresponding Helm chart from the OCI registry.
+
+Inspect the ApplicationSet to confirm the generator type has changed:
+
+[source,role="execute"]
+----
+oc get applicationset autoshift-policies -n openshift-gitops \
+  -o yaml | sed -n '/generators:/,/template:/p'
+----
+
+The output contains a `list:` key. No Application references a `policies/` path in a Git repository. No CMP sidecar is configured anywhere in the ArgoCD namespace.
+
+=== Verify
+
+For all paths (including Fallbacks A, B, and C), confirm the render produced output:
+
+[source,role="execute"]
+----
+ls .helm-charts/policies/ | wc -l
+----
+
+The count is greater than 0.
+
+For Fallback C, pull 1 chart from the canonical release and inspect it:
+
+[source,role="execute"]
+----
+helm pull oci://quay.io/autoshift/policies/openshift-gitops \
+  --untar --untardir /tmp/inspect-autoshift
+ls /tmp/inspect-autoshift/openshift-gitops/
+----
+
+----
+Chart.yaml  templates  values.yaml
+----
+
+The `openshift-gitops` policy is one of the 4 Helm holdouts. Its chart structure in the OCI registry is identical to the source tree. A rendered PG chart is the same kind of object with 1 addition: alongside `Chart.yaml`, `values.yaml` and `templates/` it carries `files/rendered.yaml`, the PolicyGenerator output that its single template emits.
+
+== Exercise 2: Flip the fleet to mirrored catalog sources
+
+This exercise works on any cluster. No mirror registry is required for Part 1.
+
+Every operator policy in AutoShift resolves its catalog `source:` field through a shared ternary hub template expression. The expression reads `autoshift.io/disconnected-mirror` on the target cluster. When that label is `'true'`, it appends the value of `autoshift.io/mirror-catalog-suffix` to the original source name. Setting 2 labels at the clusterset level rewrites the `source:` field in every OperatorPolicy across the fleet simultaneously.
+
+The teaching point here is that the same mechanism that drives per-cluster operator configuration in Modules 3 and 4 also drives disconnected mirroring. The ternary lives in every operator policy's manifest. You do not need to touch policy code to flip the whole fleet.
+
+=== Step 1: Add the disconnected mirror labels
+
+Add to the `hub:` clusterset labels in `hub-minimal.yaml`:
+
+[source,yaml]
+----
+      disconnected-mirror: 'true'
+      mirror-catalog-suffix: 'mirror'
+----
+
+Apply:
+
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+=== Step 2: Observe the catalog source flip
+
+With `disconnected-mirror: 'true'` and `mirror-catalog-suffix: 'mirror'`, the ternary in every operator policy resolves `source:` to `<original-source>-mirror`. For operators whose default source is `redhat-operators`, the resolved value becomes `redhat-operators-mirror`.
+
+Read the resolved source from any OperatorPolicy on the cluster. If you enabled an operator in an earlier module, pick that one.
+
+OperatorPolicy objects are created by the replicated policy on the cluster they target, so they live in that cluster's namespace, not in the policy namespace. On the hub that is `local-cluster`:
+
+[source,role="execute"]
+----
+oc get operatorpolicy -n local-cluster -o yaml | grep 'source:'
+----
+
+All `source:` fields now end in `-mirror`. No policy code changed. The ternary evaluated the cluster label and built the alternate string at hub template resolution time.
+
+This is safe to observe on a live cluster even without a mirror registry. The OperatorPolicies go `NonCompliant`, because the `-mirror` CatalogSource does not exist yet. Confirm it:
+
+[source,role="execute"]
+----
+oc get operatorpolicy -n local-cluster \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.compliant}{"\n"}{end}'
+----
+
+----
+install-operator-acm	NonCompliant
+install-operator-gitops	NonCompliant
+install-operator-odf	NonCompliant
+install-operator-quay	NonCompliant
+----
++
+The exact list depends on which operators you have enabled. Note that a plain
+`oc get operatorpolicy` will not show this: unlike `Policy`, the OperatorPolicy resource has no
+compliance column, so the state is only visible through the status field.
+
+That `NonCompliant` state is expected until you create the mirrored catalogs. The observation is the point, not the compliance state.
+
+=== Step 3: Understand the disconnected-mirror policy
+
+The `disconnected-mirror` label activates a full disconnected configuration policy that manages 4 categories of manifests:
+
+. *ImageDigestMirrorSet (IDMS)*: tells the CRI-O container runtime to pull image digests from the mirror registry instead of the upstream source. IDMS replaces the older ImageContentSourcePolicy (ICSP) from OpenShift 4.10 onward.
+
+. *Registry CA*: adds the mirror registry's CA certificate to the cluster trust store so the CRI-O runtime and image puller accept the mirror's TLS certificate.
+
+. *Default catalog source disablement*: sets `disableAllDefaultSources: true` in the `OperatorHub` cluster object, which removes the default Red Hat, certified, community, and marketplace catalog sources.
+
+. *Mirrored CatalogSources*: creates `CatalogSource` objects pointing at the mirror registry's index images. These replace the disabled default sources so OLM has a working catalog to consult.
+
+The `config.disconnected` block in a values file drives the content of these manifests: the mirror registry URL, the registry CA certificate, and any other mirror-specific values the policy templates read at hub template resolution time.
+
+The verified schema, from `autoshift/values/clustersets/_example.yaml`:
+
+[source,yaml]
+----
+config:
+  disconnected:
+    mirrorRegistry:
+      host: 'registry.example.com'
+      port: '5000'
+      path: 'openshift'
+      mirrors:                                # -> ImageDigestMirrorSet, images pulled by DIGEST
+        - source: 'registry.redhat.io'
+          mirror: 'registry.example.com:5000/rhel'
+        - source: 'quay.io'
+          mirror: 'registry.example.com:5000/quay'
+      tagMirrors:                             # -> ImageTagMirrorSet, images pulled by TAG
+        - source: 'docker.io/hashicorp'
+          mirror: 'registry.example.com:5000/hashicorp'
+    catalogs:
+      - source: redhat-operators
+        image: 'registry.example.com:5000/redhat/redhat-operator-index:v4.22'
+      - source: certified-operators
+        image: 'registry.example.com:5000/redhat/certified-operator-index:v4.22'
+    useIDMS: true
+    disableDefaultCatalogs: true
+----
+
+Note the split between `mirrors` and `tagMirrors`. Images pulled by digest resolve through an `ImageDigestMirrorSet`, while images pulled by tag need an `ImageTagMirrorSet`. An image referenced by tag will not resolve through a digest mirror, which is a common cause of a pull failure that looks inexplicable.
+
+=== Step 4: Generate an ImageSetConfiguration for oc mirror
+
+The values file is the source of truth for what to mirror. `scripts/generate-imageset-config.sh` discovers every enabled operator by reading the `<component>-subscription-name` labels across all values files. This is the concrete payoff for the rule established in Module 4: the `-subscription-name` label is mandatory because this script reads it. An operator with no `-subscription-name` label is invisible to the script and absent from the mirror manifest.
+
+Generate an `ImageSetConfiguration` from all current values files:
+
+[source,role="execute"]
+----
+make generate-imageset
+----
+
+The target reads every non-underscore values file under `autoshift/values/clustersets/`, discovers enabled operators from their `-subscription-name` labels, and writes `release-artifacts/imageset-config.yaml`.
+
+Inspect the output:
+
+[source,role="execute"]
+----
+cat release-artifacts/imageset-config.yaml
+----
+
+The file is an `ImageSetConfiguration` ready for `oc mirror`. It includes all AutoShift OCI artifacts (`--include-autoshift-charts` is passed automatically) plus the operator catalog and image references for each enabled operator.
+
+Running the mirror itself is out of scope for this lab, because it needs a real mirror registry and pulls many gigabytes. The command is shown here for reference only. It has no run button, because `registry.example.com` is a placeholder and the command would fail against it:
+
+----
+oc mirror --config release-artifacts/imageset-config.yaml \
+  docker://registry.example.com
+----
+
+Substitute your own registry host before running it in a real disconnected environment.
+
+=== Step 5: Note on disconnected cluster installs
+
+ImageDigestMirrorSet applies to running nodes. It does not affect the Assisted Installer. When installing a new cluster in a disconnected environment using `cluster-install`, the Assisted Installer does not honour IDMS. The `ClusterImageSet` object's `releaseImage` field must point at the mirrored release image directly. The mirror URL is not derived from IDMS at install time.
+
+=== Verify
+
+Confirm the disconnected labels are present in your values file:
+
+[source,role="execute"]
+----
+grep 'disconnected-mirror\|mirror-catalog-suffix' \
+  autoshift/values/clustersets/hub-minimal.yaml
+----
+
+----
+      disconnected-mirror: 'true'
+      mirror-catalog-suffix: 'mirror'
+----
+
+Confirm the imageset config was generated:
+
+[source,role="execute"]
+----
+test -f release-artifacts/imageset-config.yaml && \
+  grep 'kind: ImageSetConfiguration' release-artifacts/imageset-config.yaml
+----
+
+----
+kind: ImageSetConfiguration
+----
+
+Revert the disconnected labels before moving to the next module to avoid leaving policies NonCompliant on the lab cluster:
+
+[source,yaml]
+----
+      disconnected-mirror: 'false'
+      mirror-catalog-suffix: 'mirror'
+----
+
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+== Troubleshooting
+
+=== `make render-policy-charts` exits with "VERSION is required"
+
+*Issue:* Running `make render-policy-charts` without a `VERSION` argument exits immediately with `VERSION is required. Usage: make release VERSION=1.0.0`.
+
+*Cause:* The Makefile sets `VERSION ?= $(error ...)`. When `$(VERSION)` is first expanded inside the `render-policy-charts` recipe, Make evaluates the error. This fires for every target that uses `$(VERSION)`, not just `make release`.
+
+*Fix:* Always pass `VERSION` explicitly:
+
+[source,role="execute"]
+----
+make render-policy-charts VERSION=0.0.0-dev
+----
+
+Any string matching `X.Y.Z` or `X.Y.Z-suffix` is valid.
+
+=== ArgoCD repo server cannot pull charts from the OCI registry
+
+The Applications show `Unknown` sync with:
+
+----
+failed to resolve revision "0.1.0": cannot get digest for revision 0.1.0:
+HEAD ".../v2/autoshift/policies/<chart>/manifests/0.1.0": response status code 401: Unauthorized
+----
+
+Red Hat Quay creates repositories as private, so an anonymous pull is rejected.
+
+*Simplest fix: make the pushed repositories public.* The charts contain no secrets. In the Quay web
+console, open each repository under your namespace, then Settings, then Repository Visibility, and
+set it to public. Argo CD then pulls anonymously and no credential is involved.
+
+*If the repositories must stay private*, register the credential with Argo CD. Note this is a
+`repo-creds` entry, not a `repository` entry: Argo CD matches it as a URL *prefix*, and each
+Application points at its own chart path under `policies/`, so a per-repository entry does not
+match. Note also that patching `imagePullSecrets` onto a service account does not help, because
+that only governs the kubelet pulling container images for pods, while Argo CD fetches OCI charts
+inside the repo-server process.
+
+[source,role="execute"]
+----
+oc apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: quay-oci-creds
+  namespace: openshift-gitops
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+stringData:
+  url: oci://$QUAY_ROUTE/autoshift/policies
+  type: helm
+  enableOCI: "true"
+  insecure: "true"
+  username: quayadmin
+  password: ${QUAY_PASSWORD}
+EOF
+----
+
+Then force a refresh on one Application to confirm before waiting on the rest:
+
+[source,role="execute"]
+----
+oc annotate applications.argoproj.io autoshift-advanced-cluster-management \
+  -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+----
+
+=== NooBaa does not become Available after 20 minutes
+
+*Issue:* `oc wait noobaa/noobaa` times out. The NooBaa object exists but its `Available` condition stays `False`.
+
+*Cause:* The ODF operator may still be installing, or the NooBaa backing store (using local node storage) ran into a resource constraint. Standalone MCG requires available object storage on at least 1 node.
+
+*Fix:* Check the ODF operator pod status and the NooBaa system status:
+
+[source,role="execute"]
+----
+oc get pods -n openshift-storage | grep -v Running | grep -v Completed
+----
+
+[source,role="execute"]
+----
+oc describe noobaa/noobaa -n openshift-storage | grep -A 10 Conditions
+----
+
+If the OperatorPolicy has not yet reached `Compliant`, the ODF operator may still be installing. Check the cluster namespace, not the policy namespace:
+
+[source,role="execute"]
+----
+oc get operatorpolicy -n local-cluster | grep odf
+----
+
+=== Catalog sources remain mirrored after removing the disconnected label
+
+*Issue:* After setting `disconnected-mirror: 'false'` and reapplying, the `-mirror` CatalogSources remain on the cluster.
+
+*Cause:* The disconnected-mirror policy manages those CatalogSource objects with `musthave` enforcement. Removing the label removes the cluster from the placement, so ACM stops enforcing the policy there. Resources created by a policy are not automatically deleted when the policy is unbound from a cluster.
+
+*Fix:* Delete the mirrored CatalogSources manually after removing the label:
+
+[source,role="execute"]
+----
+oc get catalogsource -n openshift-marketplace | grep mirror
+----
+
+[source,role="execute"]
+----
+oc delete catalogsource -n openshift-marketplace \
+  -l autoshift.io/disconnected-mirror=true
+----
+
+=== `make generate-imageset` exits with "oc CLI is required"
+
+*Issue:* `make generate-imageset` exits with `oc CLI is required. Install from https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/`.
+
+*Cause:* The `generate-imageset-config.sh` script uses `oc` to query PackageManifest objects in the cluster and resolve the correct image references for each operator. Without an active cluster connection, it cannot complete.
+
+*Fix:* Log in to a cluster with `oc login` before running the target. If you do not have a cluster available, review the `scripts/generate-imageset-config.sh` script directly to understand the discovery logic.
+
+== Learning Outcomes
+
+By completing this module, you should now understand:
+
+* ✓ In OCI mode, PolicyGenerator directories are pre-rendered into stock Helm charts by `make render-policy-charts` at release time. ArgoCD pulls those charts from the OCI registry and runs `helm template` on them, with no CMP sidecar involved. This removes the ACM-before-GitOps ordering constraint that exists in source installs because the CMP init-container needs ACM's deployment
+* ✓ The ApplicationSet changes its generator type when switching between modes: a `git:` generator that auto-discovers `+policies/*+` directories in git mode, and a `list:` generator reading `autoshift/files/policy-list.txt` in OCI mode. The policy list is generated at release time and is fixed for that version
+* ✓ Setting `disconnected-mirror: 'true'` and `mirror-catalog-suffix: 'mirror'` rewrites the `source:` field in every operator policy through a shared ternary hub template expression. No policy code changes. The values file change propagates to all clusters in the clusterset at the next sync
+* ✓ `scripts/generate-imageset-config.sh` discovers which operators to include in the mirror manifest by reading `<component>-subscription-name` labels from the values files. This is why the `-subscription-name` label is mandatory for every operator policy: without it, the operator is absent from the ImageSetConfiguration and will not be mirrored
+
+[.solve-button-placeholder]#solve-button-placeholder#
+
+[.validate-button-placeholder]#validate-button-placeholder#

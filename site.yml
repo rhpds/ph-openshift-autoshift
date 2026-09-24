@@ -1,0 +1,45 @@
+---
+site:
+  title: Getting to know AutoShift
+  start_page: modules::index.adoc
+
+content:
+  sources:
+    - url: .
+      start_path: content
+
+ui:
+  bundle:
+    url: https://github.com/rhpds/rhdp_showroom_theme/releases/download/latest/ui-bundle.zip
+    snapshot: true
+  supplemental_files:
+    - path: ./content/supplemental-ui
+    - path: ./content/lib
+    - path: .nojekyll
+    - path: ui.yml
+      contents: "static_files: [ .nojekyll ]"
+
+antora:
+  # EVERY extension here is a LOCAL file, deliberately.
+  #
+  # The RHDP Showroom content image (ghcr.io/rhpds/showroom-content) ships
+  # @antora/cli and @antora/site-generator and nothing else. Antora treats a
+  # missing extension as fatal, so a single npm extension here means the image
+  # builds nothing, serves an empty directory, and every page 404s.
+  #
+  # Two npm extensions were removed for that reason:
+  #   @andrew-jones/antora-tabs-extension  - never used by any page
+  #   @sntke/antora-mermaid-extension      - replaced by inject-mermaid.js
+  #
+  # Do not add an npm extension unless you have confirmed the content image
+  # ships it. Local files are cloned with the repo and work everywhere.
+  extensions:
+    # Turns [mermaid] literal blocks into <pre class="mermaid"> and injects the
+    # mermaid ESM loader.
+    - require: ./content/lib/inject-mermaid.js
+    # Inlines buttons.js + site-extra.css into every page at build time.
+    # Required for the solve/validate panels.
+    - require: ./content/lib/inject-buttons.js
+
+output:
+  dir: ./www

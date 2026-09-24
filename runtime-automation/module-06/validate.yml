@@ -1,0 +1,40 @@
+- name: Module 6 Validate
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    policy_ns: policies-autoshift
+  tasks:
+    - name: Count enforce policies
+      ansible.builtin.shell: >-
+        oc get policy -n {{ policy_ns }} --no-headers
+        -o custom-columns=R:.spec.remediationAction | grep -c '^enforce'
+      register: enforce
+      changed_when: false
+      failed_when: false
+
+    - name: Confirm policies replicate to the managed cluster namespace
+      ansible.builtin.shell: oc get policy -n local-cluster --no-headers | wc -l
+      register: replicated
+      changed_when: false
+      failed_when: false
+
+    # A single validation_check per module. The action plugin accepts only
+    # pass_msg/error_msg (never msg) and returns on the first failing check, so
+    # every condition is folded into one check and the detail goes into one
+    # report. buttons.js turns each ✅/❌ line into a step chip.
+    - name: Evaluate the checks
+      ansible.builtin.set_fact:
+        _enforce_ok: "{{ (enforce.stdout | default('0') | int) > 0 }}"
+        _replicated_ok: "{{ (replicated.stdout | default('0') | int) > 0 }}"
+
+    - name: Build the report
+      ansible.builtin.set_fact:
+        _report: |
+          {{ '✅' if _enforce_ok else '❌' }} Dry run is off, so policies enforce again ({{ enforce.stdout | default(0) }} enforcing)
+          {{ '✅' if _replicated_ok else '❌' }} Policies replicate into the local-cluster namespace ({{ replicated.stdout | default(0) }} found)
+
+    - validation_check:
+        check: "{{ _enforce_ok and _replicated_ok }}"
+        pass_msg: "{{ _report }}"
+        error_msg: "{{ _report }}"
