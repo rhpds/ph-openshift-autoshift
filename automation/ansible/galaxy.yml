@@ -1,0 +1,10 @@
+---
+namespace: "ph_openshift_autoshift"
+name: "automation"
+version: "1.0.0"
+readme: README.md
+authors:
+  - "bcarr-rh psrivast@redhat.com"
+description: "Starter collection for this project's custom Ansible automation."
+license: []
+repository: "https://github.com/rhpds/ph-openshift-autoshift"
