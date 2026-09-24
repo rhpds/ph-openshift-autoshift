@@ -31,43 +31,43 @@ spec:
     - id: module-01
       title: "Bootstrap AutoShift"
       duration_min: 30
-      status: not_started
+      status: complete
     - id: module-02
       title: "Trace the label flow"
       duration_min: 20
-      status: not_started
+      status: complete
     - id: module-03
       title: "Start the long-running builds"
       duration_min: 20
-      status: not_started
+      status: complete
     - id: module-04
       title: "Enable a feature with labels alone"
       duration_min: 30
-      status: not_started
+      status: complete
     - id: module-05
       title: "Config blocks and per-cluster overrides"
       duration_min: 20
-      status: not_started
+      status: complete
     - id: module-06
       title: "Operate and troubleshoot"
       duration_min: 30
-      status: not_started
+      status: complete
     - id: module-07
       title: "Author a PolicyGenerator policy"
       duration_min: 30
-      status: not_started
+      status: complete
     - id: module-08
       title: "OCI publishing and disconnected environments"
       duration_min: 30
-      status: not_started
+      status: complete
     - id: module-09
       title: "Fleet operations capstone"
       duration_min: 20
-      status: not_started
+      status: complete
     - id: module-10
       title: "Your spoke cluster joined the fleet"
       duration_min: 15
-      status: not_started
+      status: complete
   environment:
     platform: "ocp"
     topology: "per-student"
@@ -108,9 +108,9 @@ spec:
 development:
   automation:
     gitops:
-      status: not_started
+      status: complete
     ansible:
-      status: not_started
+      status: complete
   e2e:
     status: not_started
   healthCheck:
