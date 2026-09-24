@@ -77,7 +77,7 @@ spec:
     # --- OCP-specific fields (only when platform = ocp) ---
     # Compact topology: 3x m5a.8xlarge (32 vCPU, 128 GB RAM) — schedulable control plane, no dedicated workers
     ocp_version: "4.22"
-    cluster_type: "compact"
+    cluster_type: "multinode"
     control_plane_instance_count: 3
     control_plane_cpu: 32
     control_plane_ram_gb: 128
