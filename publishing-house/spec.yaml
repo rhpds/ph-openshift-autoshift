@@ -31,33 +31,43 @@ spec:
     - id: module-01
       title: "Bootstrap AutoShift"
       duration_min: 30
+      status: not_started
     - id: module-02
       title: "Trace the label flow"
       duration_min: 20
+      status: not_started
     - id: module-03
       title: "Start the long-running builds"
       duration_min: 20
+      status: not_started
     - id: module-04
       title: "Enable a feature with labels alone"
       duration_min: 30
+      status: not_started
     - id: module-05
       title: "Config blocks and per-cluster overrides"
       duration_min: 20
+      status: not_started
     - id: module-06
       title: "Operate and troubleshoot"
       duration_min: 30
+      status: not_started
     - id: module-07
       title: "Author a PolicyGenerator policy"
       duration_min: 30
+      status: not_started
     - id: module-08
       title: "OCI publishing and disconnected environments"
       duration_min: 30
+      status: not_started
     - id: module-09
       title: "Fleet operations capstone"
       duration_min: 20
+      status: not_started
     - id: module-10
       title: "Your spoke cluster joined the fleet"
       duration_min: 15
+      status: not_started
   environment:
     platform: "ocp"
     topology: "per-student"
@@ -118,11 +128,31 @@ tracking:
 approval_checklist:
 
   content:
-    prerequisites_verifiable: null
+    prerequisites_verifiable: true
     assessment_strategy: ""
     catalog_gap: ""
-    design_overview: ""
-    module_summaries: []
+    design_overview: "Hands-on workshop teaching platform engineers to govern OpenShift clusters at scale using Red Hat ACM, OpenShift GitOps, and the AutoShift IaC framework. Participants bootstrap a hub cluster and work through 10 progressive modules — from label-flow tracing and operator lifecycle management to OCI publishing and multi-cluster fleet operations — with a real AWS spoke cluster provisioned midway. The lab's label-driven policy model (values file → ConfigMap → ManagedCluster labels → Placement → Policy) is the unifying teaching thread across all modules."
+    module_summaries:
+      - title: "Bootstrap AutoShift"
+        overview: "Participants bootstrap ACM, OpenShift GitOps, and the AutoShift Helm chart in dependency order, then verify the ApplicationSet auto-discovers all policy directories and creates per-policy Argo CD Applications."
+      - title: "Trace the label flow"
+        overview: "Starting with all policies deployed but no cluster assigned, participants assign the hub clusterset and trace the full chain from values file to ManagedCluster label stamp to policy Compliance, then prove that removing a label propagates deletion."
+      - title: "Start the long-running builds"
+        overview: "Using only labels and values files, participants declare a NooBaa MCG object store, a Quay registry, and a full SNO spoke cluster on AWS, then leave them to build while continuing the workshop."
+      - title: "Enable a feature with labels alone"
+        overview: "Participants enable, version-pin, and disable Node Feature Discovery using the 5-label operator contract, tracing every hop from label to running OLM Subscription and discovering the subtlety of split upgrade-approval semantics."
+      - title: "Config blocks and per-cluster overrides"
+        overview: "Participants add a structured config block for User Workload Monitoring and apply a per-cluster override, learning when labels are insufficient and how cluster-level values win over clusterset defaults."
+      - title: "Operate and troubleshoot"
+        overview: "Participants walk a 5-layer diagnostic chain on a healthy policy, flip the fleet-wide dry-run safety switch, and introduce a deliberate break to discover that missing labels can cause silent drift instead of immediate policy failures."
+      - title: "Author a PolicyGenerator policy"
+        overview: "Participants scaffold a new operator policy for the Web Terminal Operator using the generator script, render it locally with kustomize and the PolicyGenerator plugin, and fix 6 missing label contract entries revealed by the integration test."
+      - title: "OCI publishing and disconnected environments"
+        overview: "Participants pre-render PolicyGenerator directories into Helm charts, publish them to an OCI registry, and flip the fleet to mirrored catalog sources by adding two labels — understanding how the disconnected imageset generator reads subscription-name labels."
+      - title: "Fleet operations capstone"
+        overview: "A synthesis module covering gradual rollout via versioned clustersets, declarative cluster assignment, the 4-policy OpenShift upgrade pipeline, hub-of-hubs topology, and the production values-in-separate-repo deployment model."
+      - title: "Your spoke cluster joined the fleet"
+        overview: "Participants observe the AWS SNO spoke cluster that was started in Module 3 join the fleet, confirm ACM auto-applied all labels and policies, then execute the two-step mandatory teardown to stop billing."
     rcars_overlap_pct: null
     rcars_top_matches: []
     rejections: []
