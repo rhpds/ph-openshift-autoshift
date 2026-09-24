@@ -1,0 +1,18 @@
+site_name: Getting to know AutoShift
+docs_dir: publishing-house/spec
+nav:
+- Home: index.md
+- Design Spec: design.md
+- Modules:
+  - Module 1 - Bootstrap Autoshift: modules/module-01-bootstrap-autoshift.md
+  - Module 2 - Trace Label Flow: modules/module-02-trace-label-flow.md
+  - Module 3 - Start Long Running Builds: modules/module-03-start-long-running-builds.md
+  - Module 4 - Enable Feature With Labels: modules/module-04-enable-feature-with-labels.md
+  - Module 5 - Config Blocks And Overrides: modules/module-05-config-blocks-and-overrides.md
+  - Module 6 - Operate And Troubleshoot: modules/module-06-operate-and-troubleshoot.md
+  - Module 7 - Author A Policy: modules/module-07-author-a-policy.md
+  - Module 8 - Oci Publishing And Disconnected: modules/module-08-oci-publishing-and-disconnected.md
+  - Module 9 - Fleet Operations Capstone: modules/module-09-fleet-operations-capstone.md
+  - Module 10 - Spoke Joined Fleet: modules/module-10-spoke-joined-fleet.md
+plugins:
+- techdocs-core

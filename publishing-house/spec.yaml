@@ -129,7 +129,7 @@ approval_checklist:
 
   content:
     prerequisites_verifiable: true
-    assessment_strategy: ""
+    assessment_strategy: "Each module includes verify steps with specific oc commands that confirm expected state. The showroom provides solve and validate buttons per exercise. Validation is command-output-based (ArgoCD Application health, policy compliance status, ConfigMap contents, OperatorPolicy state) rather than trust-based."
     catalog_gap: ""
     design_overview: "Hands-on workshop teaching platform engineers to govern OpenShift clusters at scale using Red Hat ACM, OpenShift GitOps, and the AutoShift IaC framework. Participants bootstrap a hub cluster and work through 10 progressive modules — from label-flow tracing and operator lifecycle management to OCI publishing and multi-cluster fleet operations — with a real AWS spoke cluster provisioned midway. The lab's label-driven policy model (values file → ConfigMap → ManagedCluster labels → Placement → Policy) is the unifying teaching thread across all modules."
     module_summaries:
