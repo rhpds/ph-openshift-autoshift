@@ -153,8 +153,35 @@ approval_checklist:
         overview: "A synthesis module covering gradual rollout via versioned clustersets, declarative cluster assignment, the 4-policy OpenShift upgrade pipeline, hub-of-hubs topology, and the production values-in-separate-repo deployment model."
       - title: "Your spoke cluster joined the fleet"
         overview: "Participants observe the AWS SNO spoke cluster that was started in Module 3 join the fleet, confirm ACM auto-applied all labels and policies, then execute the two-step mandatory teardown to stop billing."
-    rcars_overlap_pct: null
-    rcars_top_matches: []
+    rcars_overlap_pct: 95
+    rcars_top_matches:
+      - title: "Hands-on lab with Red Hat OpenShift Platform Plus (2025)"
+        ci_name: "sandboxes-gpte.opp-hol.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=sandboxes-gpte.opp-hol.prod"
+        relevance_score: 95
+        why_it_fits: "This lab directly covers the core technologies in the request — RHACM, OpenShift GitOps/ArgoCD, PolicyGenerator, and Red Hat Quay — with a dedicated module on Policy-Driven Governance and hands-on use of the Policy Generator tool for fleet-wide policy authoring."
+        workloads: []
+      - title: "Advanced Cluster Management for Kubernetes Demo"
+        ci_name: "published.ocp4-acm-demo.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.ocp4-acm-demo.prod"
+        relevance_score: 95
+        why_it_fits: "This lab directly covers RHACM governance policies, PolicyGenerator with Kustomize, ArgoCD ApplicationSets for multicluster GitOps, and operator policy enforcement across a managed cluster fleet — all core topics of the request."
+        workloads:
+          - role: "ocp4_workload_rhacm"
+            collection: "agnosticd.core_workloads"
+          - role: "ocp4_workload_showroom"
+            collection: "agnosticd.showroom"
+      - title: "Sovereign Cloud Architecture with OpenShift: Multi-Cluster Data Residency and Compliance Management"
+        ci_name: "published.sovereign-cloud-lab.prod"
+        url: "https://catalog.demo.redhat.com/catalog?item=published.sovereign-cloud-lab.prod"
+        relevance_score: 74
+        why_it_fits: "This lab covers several overlapping technologies including RHACM multi-cluster management, OpenShift GitOps with Argo CD, policy-as-code governance with label-based cluster targeting, and Red Hat Quay — all core to the requested fleet governance use case."
+        workloads:
+          - role: "ocp4_workload_cert_manager"
+            collection: "agnosticd.core_workloads"
+          - role: "ocp4_workload_external_odf"
+            collection: "agnosticd.core_workloads"
+    catalog_gap: "No existing catalog item teaches the AutoShift IaC framework's label-driven config model (values file → ConfigMap → ManagedCluster labels → Placement → Policy), hands-on PolicyGenerator policy scaffolding with a 5-stage integration test, or pre-rendering policies as Helm charts for OCI publishing and disconnected fleet deployment. Existing ACM labs cover governance broadly but treat PolicyGenerator as a consumer tool, not something authors extend."
     rejections: []
 
   infra:
