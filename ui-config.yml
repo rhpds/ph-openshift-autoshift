@@ -11,7 +11,7 @@ view_switcher:
   default_mode: split
 
 tabs:
-  - name: Terminal
+  - name: ">_ terminal"
     path: /wetty
     port: 443
   - name: OpenShift Console
