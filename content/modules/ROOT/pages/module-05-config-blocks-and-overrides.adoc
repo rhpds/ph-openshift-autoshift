@@ -62,14 +62,16 @@ uwm:
     storage: '10Gi'
 ----
 
-`hub-minimal.yaml` already has a `config:` block. You created it in Module 3, where Quay needed `bootstrap.userInitialize` set before the registry rolled out, and Module 4 added a `node-feature-discovery` key inside it as a preview of this module. What you add here is a third key, `uwm`, alongside them.
+`hub-minimal.yaml` already has a `config:` block. You created it in Module 3, where Quay needed `bootstrap.userInitialize` set before the registry rolled out. If you did the optional upgrade-path step at the end of Module 4 Exercise 2, it also holds a `node-feature-discovery` key. What you add here is `uwm`, alongside them.
 
 . Confirm the block is there and see what it holds:
 +
 [source,role="execute"]
 ----
-grep -A8 '^    config:' autoshift/values/clustersets/hub-minimal.yaml
+sed -n '/^    config:/,/^    labels:/p' autoshift/values/clustersets/hub-minimal.yaml
 ----
++
+The command prints from `config:` down to the `labels:` line that follows it:
 +
 ----
     config:
@@ -80,7 +82,10 @@ grep -A8 '^    config:' autoshift/values/clustersets/hub-minimal.yaml
         bootstrap:
           userInitialize: true
           xhrOnly: false
+    labels:
 ----
++
+If you did the Module 4 upgrade-path step, a `node-feature-discovery:` key with its `versions` list also appears between `quay:` and `labels:`.
 +
 The comments came from the heredoc you ran in Module 3. What matters is that `config:` sits at 4-space indentation, a peer of `labels:` under `hub:`.
 
@@ -90,6 +95,16 @@ The comments came from the heredoc you ran in Module 3. What matters is that `co
 ----
 tail -5 autoshift/values/clustersets/hub-minimal.yaml
 ----
++
+----
+      node-feature-discovery-subscription-name: nfd
+      node-feature-discovery-channel: stable
+      node-feature-discovery-source: redhat-operators
+      node-feature-discovery-source-namespace: openshift-marketplace
+      node-feature-discovery-version: 'nfd.4.22.0-202609151747'
+----
++
+The last line depends on how you finished Module 4. It is the `-version` pin if you kept it, or `node-feature-discovery-source-namespace` if you removed it. Exercise 2 rewrites the file either way.
 +
 The last lines are label entries at 6-space indentation inside the `labels:` block. The `uwm:` settings go inside the existing `config:` block; the `uwm: 'true'` enable flag goes in `labels:`.
 

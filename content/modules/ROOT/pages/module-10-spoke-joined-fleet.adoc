@@ -37,12 +37,19 @@ spoke-aws-1-0-xxxxx-provision-xxxxx   1/1   Running   0   3m
 The name carries the attempt number and 2 random segments, so yours will differ. Once the
 install finishes the pod reports `0/1  Completed`.
 
+If an attempt fails, Hive starts a new provision pod for the next one and leaves the failed pod in
+`Error`, so you may see more than 1. The attempt number after `spoke-aws-1-` counts up from `0`.
+The command below always follows the newest:
+
 [source,role="execute"]
 ----
-oc logs -n spoke-aws-1 \
-  $(oc get pods -n spoke-aws-1 -o name | grep provision) \
-  -c installer -f
+oc logs -n spoke-aws-1 -c installer -f \
+  $(oc get pods -n spoke-aws-1 -o name --sort-by=.metadata.creationTimestamp \
+    | grep provision | tail -1)
 ----
+
+If you see any pod in `Error`, read <<ClusterDeployment stuck and not progressing>> before the next
+attempt fails the same way. Hive stops retrying once `installAttemptsLimit` is reached.
 
 Read the `installer` container. The pod also has a `hive` container, but it only stages binaries
 and finishes in seconds; its log contains nothing about the install.
@@ -281,12 +288,18 @@ the `hive` container only stages binaries and its log holds nothing about the fa
 oc get pods -n spoke-aws-1
 ----
 
+Each failed attempt leaves its own pod in `Error`. Read the errors from the oldest one first,
+because later attempts often fail on a leftover of the first failure rather than its cause:
+
 [source,role="execute"]
 ----
-oc logs -n spoke-aws-1 \
-  $(oc get pods -n spoke-aws-1 -o name | grep provision) \
-  -c installer --tail=60 | grep -iE 'error|failed'
+oc logs -n spoke-aws-1 -c installer \
+  $(oc get pods -n spoke-aws-1 -o name --sort-by=.metadata.creationTimestamp \
+    | grep provision | head -1) \
+  | grep -iE 'level=(error|fatal)' | tail -20
 ----
+
+Change `head -1` to `tail -1` to read the newest attempt instead.
 
 Common causes:
 

@@ -413,6 +413,8 @@ clusters:
           namespace: 'cluster-install-secrets'
         fips: false
         networkType: OVNKubernetes
+        zones:
+          - '{aws_region}a'
 
         controlPlane:
           replicas: 1
@@ -478,11 +480,15 @@ A multi-availability-zone cluster creates 1 NAT gateway per zone, and each one c
 api error AddressLimitExceeded: The maximum number of addresses has been reached.
 ----
 
-That failure arrives after Hive has already created a virtual private cloud and subnets, so it looks like a networking bug rather than a quota. SNO provisions into a single zone with 1 NAT gateway and 1 Elastic IP, which is the smallest footprint a spoke can have.
+That failure arrives after Hive has already created a virtual private cloud and subnets, so it looks like a networking bug rather than a quota.
+
+A single node does not avoid it on its own. Unless you say otherwise, the installer spreads the network across every availability zone in the region, with 1 public subnet, 1 NAT gateway, and 1 Elastic IP per zone, even when there is only 1 node to place. In `us-east-2` that is 3 Elastic IPs.
+
+`aws.zones` is what says otherwise. It pins the control plane and workers to the listed zones, and the installer only builds network for the zones its machines use. The values file lists 1 zone, `{aws_region}a`, so the spoke needs 1 NAT gateway and 1 Elastic IP, the smallest footprint a spoke can have. Any zone in the region works. If the install log reports that `m5.2xlarge` is not offered in that zone, change the letter.
 
 [IMPORTANT]
 ====
-SNO reduces the requirement to 1 Elastic IP. It does not create one out of nothing.
+SNO pinned to 1 zone reduces the requirement to 1 Elastic IP. It does not create one out of nothing.
 
 If your hub is itself a multi-zone cluster in the same sandbox account, it may already hold every Elastic IP the quota allows, in which case even a single-node spoke fails with the same `AddressLimitExceeded` error. Hive retries until `installAttemptsLimit` and then sets `ProvisionStopped`.
 

@@ -22,7 +22,7 @@
 :quay_channel: stable-3.18
 :nfd_channel: stable
 
-// AWS cluster-install (module 9).
+// AWS cluster-install (module 3).
 // These are injected at runtime from the Showroom user_data seeded by AgnosticD.
 // The values in content/antora.yml are non-functional placeholders for local builds.
 :aws_access_key_id: {aws_access_key_id}
