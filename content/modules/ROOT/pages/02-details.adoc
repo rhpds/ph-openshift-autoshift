@@ -238,7 +238,7 @@ Each item maps to a verification command in the section below.
 * [ ] `oc whoami` returns a username with no error
 * [ ] `helm version --short` returns `v3.x.x` or later
 * [ ] `git --version` returns a version string
-* [ ] `go version` returns `go version go{go_version}` or later
+* [ ] `go version` returns a Go 1.25 release or later
 * [ ] The web console at `{console_url}` loads without a certificate error
 * [ ] All cluster operators show Available=True (see setup validation below)
 
@@ -299,9 +299,9 @@ Expected: `git version 2.x.x` or later.
 go version
 ----
 
-Expected: `go version go{go_version}.x linux/amd64` or similar.
-This is required for module 7.
-If it is missing, the integration test step in module 7 will fail.
+Expected: `go version go1.25.x linux/amd64` or later.
+The integration test in module 7 needs Go {go_version} or later. If the bastion has an older 1.25 release, that is fine: module 7 downloads {go_version} when it runs the test.
+If `go` is missing entirely, the integration test step in module 7 will fail.
 
 == Troubleshooting setup issues
 

@@ -241,7 +241,9 @@ The 5 stages are:
 . *Resolved-YAML validation*: parses the fully-resolved output. Any malformed YAML or `<no value>` leak fails the test. A `<no value>` occurs when a hub template references a label that is absent from the seed.
 . *Label contract*: checks that every `autoshift.io/<key>` referenced in a policy template is declared as a key in at least 1 `_example*.yaml` file. A consumed but undeclared label fails CI with `Missing`.
 
-`tools/` is its own Go module, independent from the repository root, so Go has to be pointed at it. `go test ./tools/internal/resolver/...` from the repo root fails with "directory prefix ... does not contain main module"; `-C tools` runs the test in that module without changing your working directory. The suite requires Go {go_version} or later.
+`tools/` is its own Go module, independent from the repository root, so Go has to be pointed at it. `go test ./tools/internal/resolver/...` from the repo root fails with "directory prefix ... does not contain main module"; `-C tools` runs the test in that module without changing your working directory.
+
+The suite requires Go {go_version} or later, which can be newer than the Go installed on the bastion. `GOTOOLCHAIN=auto` in front of each `go test` lets Go download the version the module asks for when the installed one is older. It overrides the `GOTOOLCHAIN=local` setting in the Red Hat Enterprise Linux Go package for that 1 command. The first run takes longer while the download completes; if the installed Go is already new enough, nothing is downloaded.
 
 === Run the test
 
@@ -249,7 +251,7 @@ The 5 stages are:
 +
 [source,role="execute"]
 ----
-go test -C tools -tags integration ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration ./internal/resolver/...
 ----
 +
 The test fails at the label contract stage. The `placement.yaml` you generated references `autoshift.io/web-terminal` in its Placement predicate, and the shared operator-install chart references the other 5. None are declared in `autoshift/values/clustersets/_example.yaml` yet, so stage 5 reports all 6 as missing. The failure names each key, the policies that consume it, and exactly where to declare it:
@@ -287,7 +289,7 @@ Point Go at the module with `-C` instead. It runs the test as if from inside `to
 
 [source,role="execute"]
 ----
-go test -C tools -tags integration -run TestPipeline_EndToEnd ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration -run TestPipeline_EndToEnd ./internal/resolver/...
 ----
 ====
 +
@@ -336,7 +338,7 @@ grep 'web-terminal' autoshift/values/clustersets/_example.yaml
 +
 [source,role="execute"]
 ----
-go test -C tools -tags integration ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration ./internal/resolver/...
 ----
 +
 ----
@@ -409,29 +411,9 @@ make install-policy-generator
 
 [source,role="execute"]
 ----
-go test -C tools -tags integration ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration ./internal/resolver/...
 ----
 
-=== Integration test exits with "go.mod requires go >= {go_version}"
-
-*Issue:* `go test` stops before compiling anything and prints:
-
-[subs="attributes"]
-----
-go: go.mod requires go >= {go_version} (running go 1.25.5; GOTOOLCHAIN=local)
-----
-
-*Cause:* The Go on the bastion is older than the version `tools/go.mod` requires. The Go packaged in Red Hat Enterprise Linux sets `GOTOOLCHAIN=local`, which stops Go from downloading the newer toolchain itself.
-
-*Fix:* Allow Go to download the toolchain `go.mod` asks for, then run the test again:
-
-[source,role="execute"]
-----
-go env -w GOTOOLCHAIN=auto
-go test -C tools -tags integration ./internal/resolver/...
-----
-
-The first run downloads Go {go_version} into your Go module cache, so it takes a little longer. `go env -w` saves the setting for your user, so later runs use it too.
 === Test fails with `Missing` on a label you just declared
 
 *Issue:* The integration test still reports `Missing: autoshift.io/<key>` after you added the label to `_example.yaml`.
