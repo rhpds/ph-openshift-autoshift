@@ -217,7 +217,7 @@ EOF
 +
 [source,role="execute"]
 ----
-grep -A3 'uwm:' autoshift/values/clustersets/hub-minimal.yaml | head -8
+grep -A3 'uwm:$' autoshift/values/clustersets/hub-minimal.yaml
 tail -2 autoshift/values/clustersets/hub-minimal.yaml
 ----
 +
@@ -363,7 +363,7 @@ autoshift-cluster-config-maps   Synced        Healthy
 [source,role="execute"]
 ----
 oc get configmap managed-cluster-config.local-cluster -n policies-autoshift \
-  -o jsonpath='{.data.config}'
+  -o jsonpath='{.data.config}{"\n"}'
 ----
 +
 ----

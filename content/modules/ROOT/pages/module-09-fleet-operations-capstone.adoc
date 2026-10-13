@@ -293,8 +293,10 @@ oc get managedclusterinfo spoke-aws-1 -n spoke-aws-1 \
 ----
 +
 `desired` changes to the target within a few minutes. `running` changes only when the upgrade completes.
++
+The hub's copy of this information can lag behind the spoke. While the spoke's API server restarts, both lines can print blank, and the version history can still show the old release as the latest entry after the upgrade has started. Both are expected, and the values refresh once the spoke is reachable again.
 
-The upgrade takes 30 to 60 minutes. The single node reboots partway through, and while it does, `spoke-aws-1` shows `AVAILABLE: Unknown` on the hub. That is expected; it recovers when the node is back. Do not wait here. Carry on with the rest of this module, and Module 10 checks the result.
+The upgrade takes 30 to 60 minutes. A single-node cluster has only 1 API server, so `spoke-aws-1` shows `AVAILABLE: False` on the hub each time the update restarts it, and `AVAILABLE: Unknown` while the node reboots. Both are expected; it recovers when the node is back. Do not wait here. Carry on with the rest of this module, and Module 10 checks the result.
 
 === Verify
 

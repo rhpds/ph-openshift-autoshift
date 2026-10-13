@@ -434,7 +434,7 @@ oc get applications.argoproj.io -n openshift-gitops \
   | grep "$QUAY_ROUTE"
 ----
 
-AutoShift's Applications use the multi-source `spec.sources` list rather than a single `spec.source`, which is why the column reads from `sources`. Every row names your Quay route in `REPO`. Applications move to `Synced` and `Healthy` as Argo CD pulls each chart. If a row stays `Unknown` or `OutOfSync`, see <<ArgoCD repo server cannot pull charts from the OCI registry>>.
+AutoShift's Applications declare their chart in the `spec.sources` list rather than the single `spec.source` field, even though each one has only 1 source, which is why the column reads from `sources`. Every row names your Quay route in `REPO`. Applications move to `Synced` and `Healthy` as Argo CD pulls each chart. If a row stays `Unknown` or `OutOfSync`, see <<ArgoCD repo server cannot pull charts from the OCI registry>>.
 
 Continue to <<Exercise 2: Flip the fleet to mirrored catalog sources>>.
 
