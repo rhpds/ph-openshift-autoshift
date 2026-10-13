@@ -87,6 +87,8 @@ hubClusterSets:
       acm-channel: release-2.17
       acm-source: redhat-operators
       acm-source-namespace: openshift-marketplace
+      # Persistent volume for the Search database, on the cluster's default StorageClass
+      acm-search-storage: 'true'
 
       ### OpenShift Data Foundation, NooBaa only
       odf: 'true'
@@ -163,7 +165,7 @@ The policy set reads credentials from a single source secret named `aws-creds` i
 
 === SSH key generation
 
-The `aws:` block has a `fips` field. This lab sets it to `false`, and the reason is worth understanding before you generate a key.
+The `aws:` block has a `fips` field. The values file sets it to `false`, which works whether or not your hub runs in FIPS mode. Whether you may set it to `true` depends on the hub, and the reason is worth understanding before you generate a key.
 
 When `fips: true`, the OpenShift installer constrains which SSH key algorithms it will accept. Only Rivest-Shamir-Adleman (RSA) and Elliptic Curve Digital Signature Algorithm (ECDSA) are allowed. Ed25519 is not.
 
@@ -183,7 +185,7 @@ oc debug node/$(oc get nodes -o jsonpath='{.items[0].metadata.name}') -q -- \
   chroot /host cat /proc/sys/crypto/fips_enabled
 ----
 
-`0` means the hub is not in FIPS mode, so leave `fips: false`. `1` means you can set `fips: true`, and then the SSH key algorithm matters.
+`0` means the hub is not in FIPS mode, so leave `fips: false`. `1` means the hub was ordered with FIPS enabled: you can set `fips: true` in the values file in Exercise 3, and then the SSH key algorithm matters. Leaving it at `false` on a FIPS hub is also valid, and installs a non-FIPS spoke.
 
 You will generate an ECDSA key regardless. It is correct practice, it costs nothing, and it means the values file works unchanged if you later enable FIPS on a hub that supports it.
 
@@ -287,7 +289,7 @@ Confirm they landed:
 ----
 tail -2 autoshift/values/clustersets/hub-minimal.yaml
 ----
-+
+
 ----
       cluster-install: 'true'
       acm-enable-provisioning: 'true'
@@ -442,16 +444,47 @@ Field-by-field explanation:
 
 `platform: aws` routes the install to the `policy-cluster-install-aws` policy chain, which creates a Hive `ClusterDeployment` rather than a SiteConfig `ClusterInstance`.
 
-`openshiftVersion` sets the release the new cluster installs at, and it feeds the `ClusterImageSet` lookup. Replace `REPLACE_WITH_YOUR_OCP_VERSION` with the version you read from your own cluster a moment ago:
+`openshiftVersion` sets the release the new cluster installs at, and it feeds the `ClusterImageSet` lookup. By default the spoke installs at the same release as the hub, which keeps the lab simple:
 
 [source,role="execute"]
 ----
-sed -i "s/REPLACE_WITH_YOUR_OCP_VERSION/${OCP_VERSION}/" \
+SPOKE_VERSION=$OCP_VERSION
+----
+
+[TIP]
+.Optional: install the spoke 1 release behind, so you can upgrade it in Module 9
+====
+Module 9 explains how AutoShift upgrades OpenShift across a fleet. To run that upgrade for real rather than read about it, install the spoke at an older release now. A z-stream upgrade of a single-node cluster takes 30 to 60 minutes once you start it, so only choose this if you have that time to spare in Modules 9 and 10.
+
+Run this instead of the block above. It asks the OpenShift update graph for the newest older release in the same minor version that can update directly to your hub's version, which is the only kind of upgrade the policy will start:
+
+[source,role="execute"]
+----
+SPOKE_VERSION=$(curl -fsSL -H 'Accept: application/json' \
+  "https://api.openshift.com/api/upgrades_info/v1/graph?channel=stable-${OCP_VERSION%.*}&arch=amd64" \
+  | jq -r --arg t "$OCP_VERSION" '
+      ($t | split(".")[0:2] | join(".") + ".") as $minor
+      | .nodes as $n
+      | [.edges[] | select($n[.[1]].version == $t) | $n[.[0]].version | select(startswith($minor))]
+      | sort_by(split(".") | map(tonumber)) | last // empty')
+SPOKE_VERSION=${SPOKE_VERSION:-$OCP_VERSION}
+echo "hub: $OCP_VERSION  spoke: $SPOKE_VERSION"
+----
+
+If both versions print the same, the graph has no direct update path into your hub's release from an older one, and the spoke installs at the hub's version. Skip the upgrade in Module 9.
+====
+
+Write the version into the values file:
+
+[source,role="execute"]
+----
+SPOKE_VERSION=${SPOKE_VERSION:-$(oc get clusterversion version -o jsonpath='{.status.desired.version}')}
+sed -i "s/REPLACE_WITH_YOUR_OCP_VERSION/${SPOKE_VERSION}/" \
   autoshift/values/clusters/spoke-aws-1.yaml
 grep 'openshiftVersion' autoshift/values/clusters/spoke-aws-1.yaml
 ----
 
-Installing the spoke at the same release as the hub keeps the lab simple. It is not a requirement: a fleet routinely runs mixed versions, and Module 9 covers how AutoShift moves clusters between them.
+`openshift-version` in `managed-minimal.yaml` stays at your hub's version either way. That label is the version AutoShift treats as desired for the clusterset, so if you installed the spoke behind it, it is also the target the Module 9 upgrade moves the spoke to.
 
 [NOTE]
 ====
@@ -459,7 +492,7 @@ Do not hardcode a version from a document into a values file, here or anywhere e
 
 `openshift-version` on a clusterset is the *desired* version. It drives operator-catalog alignment, and the `openshift-upgrade` policy treats it as an upgrade target: a cluster opted in to upgrades moves when its clusterset's `openshift-version` is higher than the cluster's current version. A number copied from a guide is a number nobody chose deliberately.
 
-Note that `hub-minimal.yaml` ships with its own `openshift-version` value, which may be older than the cluster you are running. It is below your current version, so the upgrade policy takes no action, but it is worth knowing it is there rather than assuming it matches.
+The `hub-minimal.yaml` you wrote in Exercise 1 keeps the fixed `openshift-version` it was written with, the same kind of value Module 2 traced. It is not read from your cluster, so it may not match the version you are running. The hub does not opt in to upgrades, so the upgrade policy takes no action, but it is worth knowing the value is there rather than assuming it matches.
 ====
 
 `pullSecretRef` uses the object form rather than a plain string name because the `aws-creds` secret stores the pull secret under the custom key `pullSecret`, not the default `.dockerconfigjson`. The policy reads the key by name via a hub template lookup.
@@ -514,7 +547,7 @@ same 2 steps with the commands to confirm each one.
 
 Size the control plane accordingly: a single node runs the control plane and all workloads, so `m5.2xlarge` is the practical minimum.
 
-`aws.fips: false` because this hub is not running in FIPS mode, and the installer refuses to build a FIPS cluster from a non-FIPS host. The ECDSA key you generated is what you would need if you set this to `true` on a FIPS-enabled hub.
+`aws.fips: false` installs a non-FIPS spoke, which works from any hub. Set it to `true` only if the FIPS check in Exercise 2 printed `1`: the installer refuses to build a FIPS cluster from a non-FIPS host. The ECDSA key you generated is what a FIPS spoke requires.
 
 The `controlPlane` and `workers` blocks set EC2 instance types and root volume sizes. These are the defaults from the example file.
 
@@ -536,11 +569,11 @@ helm upgrade --install autoshift ./autoshift \
 ====
 From here on, every `helm upgrade` must include all 4 values files.
 
-Helm renders from exactly the files you pass. Drop `managed-minimal.yaml` or `spoke-aws-1.yaml` from a later command and AutoShift renders as though you never declared them: the `managed` clusterset and the `spoke-aws-1` rendered-config disappear, so the cluster stops being configured and stops being labelled.
+Helm renders from exactly the files you pass. Drop `managed-minimal.yaml` or `spoke-aws-1.yaml` from a later command and AutoShift renders as though you never declared them: the `managed` clusterset is deleted and the cluster's source ConfigMaps are pruned, so the cluster stops being configured and stops being labelled. `spoke-aws-1.rendered-config` stays behind, frozen at its last contents, because the policy that built it never deletes what it created.
 
 That does not destroy anything. Removing a declaration removes AutoShift's management of the cluster, it does not deprovision it. An in-flight install keeps running to completion and an existing cluster keeps running unmanaged. You just lose the thread, and the fix is to pass all 4 files again. Module 10 covers what actually deprovisions a cluster.
 
-The remaining modules show the shorter 2-file command, because each was written to stand alone. Keep appending your 2 extra `-f` arguments to every one of them.
+Every `helm upgrade` in the remaining modules already passes all 4 files.
 ====
 
 ArgoCD reconciles the change. The `cluster-config-maps` policy creates the `spoke-aws-1.rendered-config` ConfigMap on the hub. The cluster-install policy chain begins.
@@ -577,7 +610,7 @@ oc get clusterdeployment -n spoke-aws-1
 NAME          INFRAID             PLATFORM   REGION      VERSION   CLUSTERTYPE   PROVISIONSTATUS   POWERSTATE   AGE
 spoke-aws-1   spoke-aws-1-xxxxx   aws        {aws_region}   4.22.11             Provisioning                    2m
 ----
-+
+
 `PROVISIONSTATUS` moves from `Initialized` to `Provisioning`, and reaches `Provisioned` only
 when the install finishes. `INFRAID` is generated per attempt, so yours will differ.
 
@@ -602,13 +635,15 @@ oc get clusterdeployment -A
 
 === ClusterDeployment reports ProvisionStopped with InstallAttemptsLimitReached
 
-Check the installer container rather than the `hive` container. The `hive` container only stages
-binaries; the failure is in `installer`:
+Check the `installer` container. The provision pod's `hive` and `cli` init containers only stage
+binaries, so the failure is never there. Filter on the log level: a healthy install logs plenty of
+`Connect failed` and `Reconciler error` lines at debug level while it waits for the new API server,
+and a plain search for `error` matches every one of them:
 
 [source,role="execute"]
 ----
 POD=$(oc get pods -n spoke-aws-1 --no-headers | awk '/provision/ {print $1}' | tail -1)
-oc logs "$POD" -n spoke-aws-1 -c installer --tail=60 | grep -iE 'error|failed'
+oc logs "$POD" -n spoke-aws-1 -c installer --tail=200 | grep -E 'level=(error|fatal)'
 ----
 
 If you see `Failed to allocate Elastic IP` and `NatGatewaysReconciliationFailed`, the AWS account is

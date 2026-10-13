@@ -173,11 +173,11 @@ Module 3 declared everything this part needs in `hub-minimal.yaml`. The `odf` an
 
 === Step 1: Confirm the registry is ready
 
-Check that the ODF and Quay policies have finished:
+Check that the ODF and Quay policies applied to the hub have finished. Look in the `local-cluster` namespace, where ACM puts the policies that actually apply to the hub. The policy namespace also lists Quay-related policies that no cluster selects, and those always show a blank state:
 
-[source,role="execute",subs="attributes"]
+[source,role="execute"]
 ----
-oc get policy -n {policy_namespace} | grep -E 'odf|quay'
+oc get policy -n local-cluster | grep -E 'odf|quay'
 ----
 
 Every line should show `Compliant`. If some still show `NonCompliant`, the operators are still installing. The next 2 commands wait for them.
@@ -430,11 +430,11 @@ Confirm the policy Applications now pull their charts from your registry:
 [source,role="execute"]
 ----
 oc get applications.argoproj.io -n openshift-gitops \
-  -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REPO:.spec.source.repoURL \
+  -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REPO:.spec.sources[*].repoURL' \
   | grep "$QUAY_ROUTE"
 ----
 
-Every row names your Quay route in `REPO`. Applications move to `Synced` and `Healthy` as Argo CD pulls each chart. If a row stays `Unknown` or `OutOfSync`, see <<ArgoCD repo server cannot pull charts from the OCI registry>>.
+AutoShift's Applications use the multi-source `spec.sources` list rather than a single `spec.source`, which is why the column reads from `sources`. Every row names your Quay route in `REPO`. Applications move to `Synced` and `Healthy` as Argo CD pulls each chart. If a row stays `Unknown` or `OutOfSync`, see <<ArgoCD repo server cannot pull charts from the OCI registry>>.
 
 Continue to <<Exercise 2: Flip the fleet to mirrored catalog sources>>.
 

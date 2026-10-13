@@ -471,7 +471,7 @@ sed -i "s/node-feature-discovery: 'true'/node-feature-discovery: 'false'/" \
 +
 [source,role="execute"]
 ----
-grep 'node-feature-discovery:' autoshift/values/clustersets/hub-minimal.yaml
+grep -E "node-feature-discovery: '(true|false)'" autoshift/values/clustersets/hub-minimal.yaml
 ----
 +
 ----

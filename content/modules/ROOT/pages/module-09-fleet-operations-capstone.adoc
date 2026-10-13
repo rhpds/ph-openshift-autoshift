@@ -171,8 +171,8 @@ The labels that enable and configure the upgrade policy, set under `hubClusterSe
 [source,yaml]
 ----
       openshift-upgrade: 'true'
-      openshift-version: '4.22.8'
-      openshift-upgrade-channel: 'stable-4.22'
+      openshift-version: '<target-version>'
+      openshift-upgrade-channel: 'stable-<minor>'
 ----
 
 The `openshift-upgrade-upstream` label is optional. It overrides the default OpenShift Update Service (OSUS) graph URL, which is needed in disconnected environments that run a local OSUS instance.
@@ -219,6 +219,82 @@ oc get policy -n local-cluster | grep openshift-upgrade || echo "not applied to 
 
 The label is the gate. Never setting it keeps a cluster out of the upgrade pipeline entirely, even though the policy objects exist on the hub the whole time.
 ====
+
+=== Optional: upgrade the spoke
+
+Do this only if you chose the optional older release for the spoke in Module 3, and the spoke has joined the fleet. Otherwise go on to <<Hub-of-hubs>>.
+
+`spoke-aws-1` is the only member of the `managed` clusterset, so opting the clusterset in is a wave of exactly 1 cluster. That is the pattern the warning above asks for, at the smallest possible scale.
+
+. Confirm the spoke has joined, and compare the version it runs with the clusterset's target:
++
+[source,role="execute"]
+----
+oc get managedcluster spoke-aws-1
+oc get managedclusterinfo spoke-aws-1 -n spoke-aws-1 \
+  -o jsonpath='running: {.status.distributionInfo.ocp.version}{"\n"}'
+oc get managedcluster spoke-aws-1 \
+  -o jsonpath='target:  {.metadata.labels.autoshift\.io/openshift-version}{"\n"}'
+----
++
+`JOINED` and `AVAILABLE` must both be `True`, and `running` must be lower than `target`. If the spoke has not joined yet, skip this section; Module 10 covers the install. If the 2 versions match, there is nothing to upgrade to: the semver guard would leave the cluster alone.
+
+. Opt the `managed` clusterset in. `labels:` is the last block in `managed-minimal.yaml`, so the 2 new labels can be appended:
++
+[source,role="execute"]
+----
+OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.status.desired.version}')
+cat >> autoshift/values/clustersets/managed-minimal.yaml << EOF
+
+      ### OpenShift upgrade: move members to openshift-version above
+      openshift-upgrade: 'true'
+      openshift-upgrade-channel: 'stable-${OCP_VERSION%.*}'
+EOF
+tail -4 autoshift/values/clustersets/managed-minimal.yaml
+----
++
+`openshift-version` is already set to your hub's release from Module 3, so it becomes the target. The channel is the stable channel for that minor version.
+
+. Apply with all 4 values files:
++
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+. Watch the 4 policies arrive in the spoke's namespace on the hub and work through the sequence. Run this a few times over the next few minutes:
++
+[source,role="execute"]
+----
+oc get policy -n spoke-aws-1 | grep -E 'NAME|openshift-upgrade'
+----
++
+----
+NAME                                                REMEDIATION ACTION   COMPLIANCE STATE   AGE
+policies-autoshift.policy-openshift-upgrade         enforce              Compliant          3m
+policies-autoshift.policy-openshift-upgrade-allowed inform               Compliant          3m
+policies-autoshift.policy-openshift-upgrade-channel enforce              Compliant          3m
+policies-autoshift.policy-openshift-upgrade-status  inform               NonCompliant       3m
+----
++
+This is the state while the upgrade runs. The channel is set, the target is an allowed update, and `desiredUpdate` is written, so the first 3 are `Compliant`. `policy-openshift-upgrade-status` stays `NonCompliant` until the spoke actually reaches the target. That is the completion gate the table above describes.
+
+. Watch the Cluster Version Operator on the spoke take the update:
++
+[source,role="execute"]
+----
+oc get managedclusterinfo spoke-aws-1 -n spoke-aws-1 \
+  -o jsonpath='running: {.status.distributionInfo.ocp.version}{"\n"}desired: {.status.distributionInfo.ocp.desiredVersion}{"\n"}'
+----
++
+`desired` changes to the target within a few minutes. `running` changes only when the upgrade completes.
+
+The upgrade takes 30 to 60 minutes. The single node reboots partway through, and while it does, `spoke-aws-1` shows `AVAILABLE: Unknown` on the hub. That is expected; it recovers when the node is back. Do not wait here. Carry on with the rest of this module, and Module 10 checks the result.
 
 === Verify
 
@@ -363,7 +439,7 @@ Every operation in this module uses that same chain:
 
 * *Declarative assignment:* `config.clusterSet` and `config.versionTag` in a cluster's values file feed the `cluster-set-assignment` policy, which stamps the clusterset label. That label change shifts which AutoShift deployment owns the cluster.
 
-* *OpenShift upgrades:* `openshift-upgrade: 'true'` and `openshift-version: '4.22.8'` in the clusterset values enable 4 upgrade policies on every cluster in that clusterset. Removing a cluster from that clusterset removes the policies. The wave is a series of clusterset migrations tracked as git commits.
+* *OpenShift upgrades:* `openshift-upgrade: 'true'` and `openshift-version` set to the target release in the clusterset values enable 4 upgrade policies on every cluster in that clusterset. Removing a cluster from that clusterset removes the policies. The wave is a series of clusterset migrations tracked as git commits.
 
 * *Hub-of-hubs:* `self-managed: 'false'` in the HoH's values file for hub1 tells the HoH AutoShift to generate the `managedHub` target of `cluster-labels` and deploy it onto hub1 via the HoH's ACM. The config ConfigMaps that hub1's own AutoShift produces are the same ConfigMap mechanism you saw in Module 2, running on a different cluster in a different namespace.
 

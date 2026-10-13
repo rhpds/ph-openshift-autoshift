@@ -124,6 +124,9 @@ oc get managedcluster spoke-aws-1 -o json | grep '"autoshift\.io/'
 +
 Your `openshift-version` will differ. Module 3 wrote that value into `managed-minimal.yaml` by
 reading it off your own cluster, so it matches whatever release your lab was provisioned at.
++
+If you did the optional upgrade in Module 9, you also see `autoshift.io/openshift-upgrade` and
+`autoshift.io/openshift-upgrade-channel`.
 
 Every label from the `managed` clusterset values file is there, plus `autoshift.io/owning-namespace` and `autoshift.io/owning-deployment` stamped automatically by the policy, and `autoshift.io/cluster-type: spoke` derived from the fact that the clusterset was declared under `managedClusterSets`.
 
@@ -144,6 +147,41 @@ policies-autoshift.policy-nfd-operator-install   enforce              Compliant 
 ----
 
 `policy-nfd-operator-install` reporting `Compliant` means Node Feature Discovery is installed and running on the spoke. You declared it in Module 3 against a cluster that did not exist, and never touched that cluster again.
+
+If you did the optional upgrade in Module 9, the 4 `openshift-upgrade` policies are listed as well.
+
+=== Optional: confirm the upgrade finished
+
+Skip this if you did not start the upgrade in Module 9.
+
+Check the completion gate:
+
+[source,role="execute",subs="attributes"]
+----
+oc get policy -n {policy_namespace} policy-openshift-upgrade-status \
+  -o jsonpath='{range .status.status[*]}{.clustername}{"\t"}{.compliant}{"\n"}{end}'
+----
+
+----
+spoke-aws-1	Compliant
+----
+
+Then read the spoke's version history from the hub. The newest entry is first:
+
+[source,role="execute"]
+----
+oc get managedclusterinfo spoke-aws-1 -n spoke-aws-1 \
+  -o jsonpath='{range .status.distributionInfo.ocp.versionHistory[*]}{.version}{"\t"}{.state}{"\n"}{end}'
+----
+
+----
+4.22.11	Completed
+4.22.10	Completed
+----
+
+Your versions will differ. The older line is the release you installed in Module 3, and the newer one is the clusterset's `openshift-version`. You changed 2 labels in a values file, and a cluster you have never logged into upgraded itself.
+
+If `policy-openshift-upgrade-status` is still `NonCompliant`, the upgrade is still running, and the top history entry shows `Partial`. You can wait for it, but you do not have to: tearing the cluster down mid-upgrade is safe, because deprovisioning deletes the AWS resources whatever state OpenShift is in.
 
 === Verify
 
