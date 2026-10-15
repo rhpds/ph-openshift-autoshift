@@ -251,8 +251,10 @@ The suite requires Go {go_version} or later, which can be newer than the Go inst
 +
 [source,role="execute"]
 ----
-GOTOOLCHAIN=auto go test -C tools -tags integration ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration -run TestPipeline_EndToEnd ./internal/resolver/...
 ----
++
+`-run TestPipeline_EndToEnd` runs only the pipeline test, which holds the 5 stages above. The full suite that CI runs adds a mutation sweep and chart profile tests. Those are CPU-bound and take about 2 minutes on the bastion; the pipeline test alone finishes well inside a minute. The time printed at the end of a run depends on the bastion's CPU count, so expect it to differ from the samples below.
 +
 The test fails at the label contract stage. The `placement.yaml` you generated references `autoshift.io/web-terminal` in its Placement predicate, and the shared operator-install chart references the other 5. None are declared in `autoshift/values/clustersets/_example.yaml` yet, so stage 5 reports all 6 as missing. The failure names each key, the policies that consume it, and exactly where to declare it:
 +
@@ -338,7 +340,7 @@ grep 'web-terminal' autoshift/values/clustersets/_example.yaml
 +
 [source,role="execute"]
 ----
-GOTOOLCHAIN=auto go test -C tools -tags integration ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration -run TestPipeline_EndToEnd ./internal/resolver/...
 ----
 +
 ----
@@ -411,7 +413,7 @@ make install-policy-generator
 
 [source,role="execute"]
 ----
-GOTOOLCHAIN=auto go test -C tools -tags integration ./internal/resolver/...
+GOTOOLCHAIN=auto go test -C tools -tags integration -run TestPipeline_EndToEnd ./internal/resolver/...
 ----
 
 === Test fails with `Missing` on a label you just declared

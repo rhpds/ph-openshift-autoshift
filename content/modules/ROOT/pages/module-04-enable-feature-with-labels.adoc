@@ -387,20 +387,68 @@ oc get packagemanifest nfd -n openshift-marketplace \
   -o jsonpath='{.status.channels[0].entries[*].name}' | tr ' ' '\n' | head -4
 ----
 
-. Pick 2 adjacent versions. Remove the `-version` label you added above, and add an allow-list
-under the `config:` key you created in Module 3. Do not start a second `config:` block
+. Pick 2 adjacent versions: the CSV you pinned above, and the one just before it in the catalog:
 +
-[source,yaml]
+[source,role="execute"]
 ----
-    config:
-      node-feature-discovery:
-        versions:
-          - 'nfd.4.22.0-<older>'
-          - 'nfd.4.22.0-<newer>'
-        startingCSV: 'nfd.4.22.0-<older>'
+export NFD_CSV=$(oc get csv -n openshift-nfd --no-headers | awk '/^nfd\./ {print $1}')
+export NFD_OLDER=$(oc get packagemanifest nfd -n openshift-marketplace \
+  -o jsonpath='{.status.channels[0].entries[*].name}' | tr ' ' '\n' \
+  | grep -A1 -x "$NFD_CSV" | tail -1)
+echo "older=${NFD_OLDER} newer=${NFD_CSV}"
 ----
 
-. Apply, then read the allow-list back off the policy:
+. Edit `autoshift/values/clustersets/hub-minimal.yaml`. Remove the `node-feature-discovery-version` label you added above, and add the allow-list under the `config:` key you created in Module 3. `yq` edits the existing `config:` block in place, so it cannot start a second one:
++
+[source,role="execute"]
+----
+yq -i '
+  del(.hubClusterSets.hub.labels["node-feature-discovery-version"]) |
+  .hubClusterSets.hub.config["node-feature-discovery"].versions = [strenv(NFD_OLDER), strenv(NFD_CSV)] |
+  .hubClusterSets.hub.config["node-feature-discovery"].startingCSV = strenv(NFD_OLDER)
+' autoshift/values/clustersets/hub-minimal.yaml
+----
++
+`yq` also drops the blank lines between label groups. That changes nothing that AutoShift reads.
+
+. Confirm the allow-list sits next to the Quay settings and the label is gone:
++
+[source,role="execute"]
+----
+grep -A12 '^    config:' autoshift/values/clustersets/hub-minimal.yaml
+grep -c 'node-feature-discovery-version' autoshift/values/clustersets/hub-minimal.yaml
+----
++
+----
+    config:
+      # Quay ships no bootstrap Job, so the registry starts with no users. Module 8 creates the
+      # first one through the registry API, and that endpoint is only reachable when these are
+      # set BEFORE Quay rolls out.
+      quay:
+        bootstrap:
+          userInitialize: true
+          xhrOnly: false
+      node-feature-discovery:
+        versions:
+          - nfd.4.22.0-<older>
+          - nfd.4.22.0-<newer>
+        startingCSV: nfd.4.22.0-<older>
+0
+----
+
+. Apply the change:
++
+[source,role="execute"]
+----
+helm upgrade --install autoshift ./autoshift \
+  -n openshift-gitops \
+  -f autoshift/values/global.yaml \
+  -f autoshift/values/clustersets/hub-minimal.yaml \
+  -f autoshift/values/clustersets/managed-minimal.yaml \
+  -f autoshift/values/clusters/spoke-aws-1.yaml
+----
+
+. Read the allow-list back off the policy. It can take a minute for the policy to update:
 +
 [source,role="execute"]
 ----
@@ -443,7 +491,7 @@ Leaving `startingCSV` empty lets OLM choose where to begin while still constrain
 
 [IMPORTANT]
 ====
-Add these keys *inside* the existing `config:` block. A YAML mapping may not contain the same key
+If you edit the file by hand rather than with `yq`, add these keys *inside* the existing `config:` block. A YAML mapping may not contain the same key
 twice, and a second `config:` at the same indentation does not raise an error: the parser keeps the
 last one and silently discards the first, taking the Quay settings from Module 3 with it.
 
