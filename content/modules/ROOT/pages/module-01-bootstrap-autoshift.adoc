@@ -95,9 +95,8 @@ Confirm the ACM channel in the values file:
 grep 'acm-channel' autoshift/values/clustersets/hub-minimal.yaml
 ----
 
-[subs="attributes"]
 ----
-      acm-channel: {acm_channel}
+      acm-channel: release-<version>
 ----
 
 Confirm the GitOps channel:
@@ -107,18 +106,19 @@ Confirm the GitOps channel:
 grep 'gitops-channel' autoshift/values/clustersets/hub-minimal.yaml
 ----
 
-[subs="attributes"]
 ----
-      gitops-channel: {gitops_channel}
+      gitops-channel: gitops-<version>
 ----
+
+Both channels come from the AutoShift release you cloned, so the numbers move with AutoShift rather than with this guide. The link:{autoshift_repo}#versions[Versions table in the AutoShift README^] lists the combination each release targets.
 
 == Exercise 2: Bootstrap ACM, then GitOps
 
 The order matters. Read the reason before running any command.
 
-The Argo CD repo-server runs a PolicyGenerator CMP sidecar. Nearly every policy in AutoShift is a PolicyGenerator directory, not a Helm chart. The CMP sidecar renders those directories into ACM `Policy` objects at sync time. The sidecar runs as an init-container in the repo-server pod, and its image is not hardcoded in the GitOps bootstrap chart. Instead, the chart reads the image from ACM's `multicluster-operators-hub-subscription` deployment at install time.
+The Argo CD repo-server runs a PolicyGenerator CMP sidecar. Nearly every policy in AutoShift is a PolicyGenerator directory, not a Helm chart. The CMP sidecar renders those directories into ACM `Policy` objects at sync time. The sidecar runs as an init-container in the repo-server pod, and its image is not hardcoded in the GitOps bootstrap chart. Instead, the chart reads the image from ACM's `acm-cli-downloads` deployment at install time. That image ships the PolicyGenerator binary.
 
-If GitOps is installed before ACM, that deployment does not yet exist. The image field is empty. The repo-server pod fails with:
+If GitOps is installed before that deployment exists, the image field is empty. The repo-server pod fails with:
 
 ----
 Deployment "<argo>-repo-server" is invalid:
@@ -127,11 +127,11 @@ spec.template.spec.initContainers[1].image: Required value
 
 No image means no CMP. No CMP means no PolicyGenerator. No PolicyGenerator means no policies render or sync.
 
-The constraint applies to source installs only. OCI mode deploys pre-rendered Helm charts and has no dependency on the CMP init-container, so the order does not matter there. If you install GitOps first by mistake, the recovery is to run `helm upgrade` on the GitOps chart again once ACM's operator is up.
+The constraint applies to source installs only. OCI mode deploys pre-rendered Helm charts and has no dependency on the CMP init-container, so the order does not matter there. If you install GitOps first by mistake, the recovery is to run `helm upgrade` on the GitOps chart again once `acm-cli-downloads` exists.
 
 === Step 1: Install ACM
 
-You do not need to wait for MultiClusterHub to reach `Running` before proceeding to GitOps. You only need ACM's operator deployment to exist.
+`acm-cli-downloads` belongs to the MultiClusterHub console component, so it appears partway through the MultiClusterHub reconcile rather than alongside ACM's operator. In practice it becomes available at about the same moment MultiClusterHub reaches `Running`, roughly 10 minutes after the install.
 
 . Install the ACM bootstrap chart from your local clone:
 +
@@ -140,21 +140,20 @@ You do not need to wait for MultiClusterHub to reach `Running` before proceeding
 helm upgrade --install advanced-cluster-management advanced-cluster-management
 ----
 
-. Wait for the operator deployment to appear. Re-run this until you see `1/1` in the READY column:
+. Wait for the `acm-cli-downloads` deployment to exist. The GitOps chart reads only the image name from its spec, so the deployment does not need to be running yet:
 +
 [source,role="execute"]
 ----
-oc get deploy multicluster-operators-hub-subscription -n open-cluster-management
+oc wait --for=create deploy/acm-cli-downloads -n open-cluster-management --timeout=15m
 ----
 +
 ----
-NAME                                      READY   UP-TO-DATE   AVAILABLE   AGE
-multicluster-operators-hub-subscription   1/1     1            1           90s
+deployment.apps/acm-cli-downloads condition met
 ----
 +
-Once you see `1/1`, proceed. You do not need to wait for MCH to reach `Running`.
+Once the condition is met, proceed. Do not install GitOps before this point.
 
-. Check MultiClusterHub status. MCH takes roughly 10 minutes to reach `Running`. You can continue with the next steps while it completes, but you will not be able to verify policy compliance until it is `Running`:
+. Check MultiClusterHub status. You will not be able to verify policy compliance until it is `Running`:
 +
 [source,role="execute"]
 ----
@@ -163,7 +162,7 @@ oc get mch -A
 
 === Step 2: Install GitOps
 
-ACM's operator deployment now exists. The GitOps chart can resolve the init-container image.
+`acm-cli-downloads` now exists. The GitOps chart can resolve the init-container image.
 
 . Install the GitOps bootstrap chart:
 +
@@ -319,13 +318,13 @@ The hub cluster has no clusterset assignment yet. Placements will not select it,
 spec.template.spec.initContainers[1].image: Required value
 ----
 
-*Cause:* GitOps was installed before ACM's operator deployment existed. The bootstrap chart could not find `multicluster-operators-hub-subscription` and wrote an empty string for the init-container image.
+*Cause:* GitOps was installed before ACM's `acm-cli-downloads` deployment existed. The bootstrap chart could not find it and wrote an empty string for the init-container image. If MultiClusterHub is `Running` and the deployment is still missing, check that the MultiClusterHub console component is enabled, because `acm-cli-downloads` belongs to it.
 
-*Recovery:* Verify the ACM deployment is present, then re-run the GitOps install:
+*Recovery:* Wait for the deployment to exist, then re-run the GitOps install:
 
 [source,role="execute"]
 ----
-oc get deploy multicluster-operators-hub-subscription -n open-cluster-management
+oc wait --for=create deploy/acm-cli-downloads -n open-cluster-management --timeout=15m
 helm upgrade --install openshift-gitops openshift-gitops \
   -f policies/stable/openshift-gitops/values.yaml
 ----
@@ -401,7 +400,7 @@ If MCH shows `Running`, proceed to Module 2 to assign the hub cluster to a clust
 
 By completing this module, you should now understand:
 
-* ✓ ACM must be bootstrapped before GitOps on source installs, because the GitOps repo-server resolves its PolicyGenerator CMP init-container image from ACM's `multicluster-operators-hub-subscription` deployment at install time
+* ✓ ACM must be bootstrapped before GitOps on source installs, because the GitOps repo-server resolves its PolicyGenerator CMP init-container image from ACM's `acm-cli-downloads` deployment at install time, which exists only once the MultiClusterHub console component is up
 * ✓ The three-phase deployment model: bootstrap operators by hand, hand control to Argo CD via the `autoshift/` chart, then let the ApplicationSet auto-discover and deploy all charts under `policies/`
 * ✓ Starting from `hub-minimal.yaml` rather than `hub.yaml` gives you a minimal, readable starting point with only GitOps and ACM enabled
 * ✓ The ApplicationSet discovers policies with 2 Git file generators, one matching `+policies/<tier>/*/kustomization.yaml+` for PolicyGenerator directories and one matching `+policies/<tier>/*/Chart.yaml+` for the Helm holdouts. No manual registration is needed

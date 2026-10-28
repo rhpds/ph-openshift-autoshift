@@ -113,10 +113,9 @@ The decision criteria are in the module 3 warning, and the exact fallback steps 
 
 === Cluster
 
-* An OpenShift cluster, self-managed as `local-cluster`. Validated on {ocp_version}; lab environments are provisioned at whatever release is current
+* An OpenShift cluster, self-managed as `local-cluster`. Lab environments are provisioned at whatever release is current
 * No separate spoke cluster is required for modules 1 through 9. Module 3 provisions one on AWS and module 10 verifies and removes it
-* Red Hat Advanced Cluster Management installed during module 1 from channel `{acm_channel}`
-* OpenShift GitOps installed during module 1 from channel `{gitops_channel}`
+* Red Hat Advanced Cluster Management and OpenShift GitOps installed during module 1, from the channels the AutoShift release you clone declares. The link:{autoshift_repo}#versions[Versions table in the AutoShift README^] lists them
 * Modules 3 and 8: headroom for NooBaa MCG pods plus Quay Registry on top of what ACM and GitOps consume
 
 === Required tools
@@ -128,7 +127,7 @@ If you are running outside the provisioned environment, verify each one before m
 * `helm` version 3.x or later
 * `git`
 * `make`
-* `go` version {go_version} or later, required for the integration tests in module 7
+* `go`, required for the integration tests in module 7. Module 7 downloads the version named in `tools/go.mod` if the installed one is older
 * `jq`, required by `make generate-imageset` in module 8, which exits if it is absent
 * `yq`, required by `make update-versions` in module 8 and by `make validate`
 * `curl`, used to initialize Red Hat Quay in module 8
@@ -264,7 +263,7 @@ oc get clusterversion version -o jsonpath='{.status.desired.version}{"\n"}'
 
 Note the version you get. Module 3 uses it when declaring the managed clusterset and the spoke cluster, so it is read from the cluster rather than copied from this guide.
 
-This lab was validated on {ocp_version}. A newer release is expected and fine.
+Any release in the range the AutoShift version you clone supports is fine. The link:{autoshift_repo}#versions[Versions table in the AutoShift README^] lists it.
 
 === Cluster operator health
 
@@ -299,8 +298,8 @@ Expected: `git version 2.x.x` or later.
 go version
 ----
 
-Expected: `go version go1.25.x linux/amd64` or later.
-The integration test in module 7 needs Go {go_version} or later. If the bastion has an older 1.25 release, that is fine: module 7 downloads {go_version} when it runs the test.
+Any `go version` output is fine.
+The integration test in module 7 needs the Go version named in `tools/go.mod`. If the bastion has an older release, module 7 downloads the required one when it runs the test.
 If `go` is missing entirely, the integration test step in module 7 will fail.
 
 == Troubleshooting setup issues

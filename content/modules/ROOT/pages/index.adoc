@@ -30,11 +30,11 @@ Prior ACM or OpenShift GitOps experience is not required, but the lab moves at a
 
 == Prerequisites
 
-* An OpenShift cluster with cluster-admin access. Validated on {ocp_version}
-* Helm 3.x installed on your workstation
+* An OpenShift cluster with cluster-admin access, on a release the AutoShift version you clone supports
+* Helm 3 or later installed on your workstation
 * The `oc` CLI configured and authenticated
 * Git and standard shell tools (`make`, `curl`, `jq`, `yq`)
-* Go {go_version} or later (required for Module 7)
+* Go (required for Module 7, which downloads the version named in `tools/go.mod` if yours is older)
 
 == Workshop environment
 
@@ -43,21 +43,9 @@ In module 3 you declare a spoke cluster on AWS and AutoShift provisions it while
 with the other modules; module 10 verifies it inherited its configuration and tears it down.
 You clone the AutoShift repository and drive everything from your terminal using `helm` and `oc`.
 
-The key versions in this lab:
-
-[cols="2,2",options="header"]
-|===
-|Component |Version this lab was validated on
-
-|OpenShift
-|{ocp_version} (your cluster may be newer)
-
-|ACM channel
-|{acm_channel}
-
-|OpenShift GitOps channel
-|{gitops_channel}
-|===
+The lab installs whatever ACM and OpenShift GitOps channels the AutoShift release you clone
+declares, so the versions follow AutoShift rather than this guide. The link:{autoshift_repo}#versions[Versions table in the AutoShift README^] lists the
+OpenShift, ACM and OpenShift GitOps combination each release targets.
 
 == Estimated time
 

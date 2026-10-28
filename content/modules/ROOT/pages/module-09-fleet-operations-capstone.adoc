@@ -421,7 +421,7 @@ spec:
 
 Compare that `valueFiles` list with the `-f` arguments you have been passing all lab. They are the same list. The difference is who supplies them: Argo CD reading your repo, rather than you typing them.
 
-The `ref` source must be a git repository. You cannot `$ref` a Helm or OCI source. This needs Argo CD 2.8 or later, which OpenShift GitOps 1.21 comfortably provides.
+The `ref` source must be a git repository. You cannot `$ref` a Helm or OCI source. This needs Argo CD 2.8 or later, which every supported OpenShift GitOps release provides.
 
 === What changes in practice
 

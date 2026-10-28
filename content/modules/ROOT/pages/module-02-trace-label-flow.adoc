@@ -191,11 +191,11 @@ oc get configmap cluster-set.hub -n {policy_namespace} -o yaml
 ----
 apiVersion: v1
 data:
-  labels: '{"autoshift.io/acm-channel":"release-2.17","autoshift.io/acm-source":
+  labels: '{"autoshift.io/acm-channel":"release-<version>","autoshift.io/acm-source":
     "redhat-operators","autoshift.io/acm-source-namespace":"openshift-marketplace",
     "autoshift.io/acm-subscription-name":"advanced-cluster-management",
     "autoshift.io/cluster-type":"hub","autoshift.io/gitops":"true",
-    "autoshift.io/gitops-channel":"gitops-1.21",
+    "autoshift.io/gitops-channel":"gitops-<version>",
     "autoshift.io/gitops-disable-default-argocd":"true",
     "autoshift.io/gitops-source":"redhat-operators","autoshift.io/gitops-source-namespace":
     "openshift-marketplace","autoshift.io/gitops-subscription-name":"openshift-gitops-operator",
@@ -217,13 +217,13 @@ oc get managedcluster local-cluster -o json | grep '"autoshift\.io/'
 ----
 +
 ----
-            "autoshift.io/acm-channel": "release-2.17",
+            "autoshift.io/acm-channel": "release-<version>",
             "autoshift.io/acm-source": "redhat-operators",
             "autoshift.io/acm-source-namespace": "openshift-marketplace",
             "autoshift.io/acm-subscription-name": "advanced-cluster-management",
             "autoshift.io/cluster-type": "hub",
             "autoshift.io/gitops": "true",
-            "autoshift.io/gitops-channel": "gitops-1.21",
+            "autoshift.io/gitops-channel": "gitops-<version>",
             "autoshift.io/gitops-disable-default-argocd": "true",
             "autoshift.io/gitops-source": "redhat-operators",
             "autoshift.io/gitops-source-namespace": "openshift-marketplace",
