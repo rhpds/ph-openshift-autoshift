@@ -421,9 +421,6 @@ grep -c 'node-feature-discovery-version' autoshift/values/clustersets/hub-minima
 +
 ----
     config:
-      # Quay ships no bootstrap Job, so the registry starts with no users. Module 8 creates the
-      # first one through the registry API, and that endpoint is only reachable when these are
-      # set BEFORE Quay rolls out.
       quay:
         bootstrap:
           userInitialize: true

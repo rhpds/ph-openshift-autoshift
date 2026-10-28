@@ -43,7 +43,7 @@ By the end of this module, you'll be able to:
 
 == Exercise 1, Part 1: Render PolicyGenerator directories into Helm charts
 
-In git mode, the Argo CD repo server's CMP sidecar renders each PolicyGenerator (PG) directory at sync time. The CMP init-container image is resolved by a render-time lookup of ACM's `multicluster-operators-hub-subscription` deployment. Without ACM running, that lookup fails, the init-container cannot start, and every PG policy stays unrendered. This is why source installs require ACM before GitOps.
+In git mode, the Argo CD repo server's CMP sidecar renders each PolicyGenerator (PG) directory at sync time. The CMP init-container image is resolved by a render-time lookup of ACM's `acm-cli-downloads` deployment, which ships the PolicyGenerator binary. Until that deployment exists, that lookup fails, the init-container cannot start, and every PG policy stays unrendered. This is why source installs require ACM before GitOps.
 
 In OCI mode, the render happens at release time. The `make render-policy-charts` target runs kustomize with the PolicyGenerator plugin against every PG directory in the repository and writes the result as a packaged Helm chart into `.helm-charts/policies/`. By the time ArgoCD pulls the chart from the registry, all PolicyGenerator processing is already done. No CMP sidecar is configured, and the ACM-before-GitOps ordering constraint disappears. OCI installations can bootstrap GitOps before ACM without issue.
 

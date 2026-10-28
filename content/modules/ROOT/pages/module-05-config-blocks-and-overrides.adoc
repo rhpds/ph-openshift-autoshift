@@ -75,9 +75,6 @@ The command prints from `config:` down to the `labels:` line that follows it:
 +
 ----
     config:
-      # Quay ships no bootstrap Job, so the registry starts with no users. Module 8 creates the
-      # first one through the registry API, and that endpoint is only reachable when these are
-      # set BEFORE Quay rolls out.
       quay:
         bootstrap:
           userInitialize: true
@@ -87,7 +84,7 @@ The command prints from `config:` down to the `labels:` line that follows it:
 +
 If you did the Module 4 upgrade-path step, a `node-feature-discovery:` key with its `versions` list also appears between `quay:` and `labels:`.
 +
-The comments came from the heredoc you ran in Module 3. What matters is that `config:` sits at 4-space indentation, a peer of `labels:` under `hub:`.
+The `quay:` settings came from the `yq` edit you ran in Module 3. What matters is that `config:` sits at 4-space indentation, a peer of `labels:` under `hub:`.
 
 . Review the end of the file, where the labels live:
 +
@@ -101,10 +98,10 @@ tail -5 autoshift/values/clustersets/hub-minimal.yaml
       node-feature-discovery-channel: stable
       node-feature-discovery-source: redhat-operators
       node-feature-discovery-source-namespace: openshift-marketplace
-      node-feature-discovery-version: 'nfd.4.22.0-202609151747'
+      node-feature-discovery-version: 'nfd.<version>'
 ----
 +
-The last line depends on how you finished Module 4. It is the `-version` pin if you kept it, or `node-feature-discovery-source-namespace` if you removed it. Exercise 2 rewrites the file either way.
+The last line depends on how you finished Module 4. It is the `-version` pin if you kept it, or `node-feature-discovery-source-namespace` if you removed it. Exercise 2 clears the pin either way.
 +
 The last lines are label entries at 6-space indentation inside the `labels:` block. The `uwm:` settings go inside the existing `config:` block; the `uwm: 'true'` enable flag goes in `labels:`.
 
@@ -127,86 +124,32 @@ A values file with 2 `config:` keys at the same indentation is the failure Modul
 
 == Exercise 2: Add a config block and read it back
 
-The command below is `cat >`, not `cat >>`: it rewrites `hub-minimal.yaml` whole rather than appending. That is deliberate. Adding a second `config:` key by appending is the silent-clobber failure Module 4 warned about, and rewriting the file puts every student on the same known state regardless of how far they took Module 4 Exercise 2.
+The `config:` key already exists, created in Module 3, so the `uwm` settings must go *inside* it. Appending a second `config:` key is the silent-clobber failure Module 4 warned about. `yq` edits the existing block in place, so it cannot start a second one.
 
-Read the heredoc before you run it. It carries the Quay config from Module 3, the cluster-install labels you added in Module 3, the NFD labels left at `node-feature-discovery: 'false'` from the end of Module 4, and adds `uwm` in both places.
-
-Two things from Module 4 Exercise 2 are deliberately not carried forward: the
-`config.node-feature-discovery` version allow-list, and the `node-feature-discovery-version`
-label. Both were pins on a specific ClusterServiceVersion that is unique to your cluster, so
-neither can live in a shared file. They have served their purpose as a demonstration. Without
-the pin, the operator tracks its channel again, which is the normal state for the rest of the
-lab.
+The same edit removes the NFD pins from Module 4, the `config.node-feature-discovery` version allow-list and the `node-feature-discovery-version` label, if either is still in your file, and leaves NFD at `node-feature-discovery: 'false'`. Both pins named a ClusterServiceVersion unique to your cluster, so neither belongs in a shared values file. Without them, the operator tracks its channel again for the rest of the lab.
 
 The config block uses the minimum fields the UWM policy needs to produce a complete `user-workload-monitoring-config` ConfigMap: Prometheus retention and storage, and Thanos Ruler retention and storage. There is no `storageClass`, so the cluster's default storage class is used. Fields left without values would produce an invalid resource quantity in the rendered ConfigMap.
 
-Rewrite the file with the `uwm` label and its config block added:
-
+. Add the `uwm` config block and clear the NFD pins:
++
 [source,role="execute"]
 ----
-cat > autoshift/values/clustersets/hub-minimal.yaml << 'EOF'
-# Minimum Hub Cluster Configuration
-hubClusterSets:
-  hub:
-    config:
-      quay:
-        bootstrap:
-          userInitialize: true
-          xhrOnly: false
-      uwm:
-        prometheus:
-          retention: '24h'
-          storage: '10Gi'
-        thanosRuler:
-          retention: '24h'
-          storage: '5Gi'
-    labels:
-      openshift-version: '4.22.8'
-      self-managed: 'true'
+yq -i '
+  del(.hubClusterSets.hub.config["node-feature-discovery"]) |
+  del(.hubClusterSets.hub.labels["node-feature-discovery-version"]) |
+  .hubClusterSets.hub.labels["node-feature-discovery"] = "false" |
+  .hubClusterSets.hub.config.uwm.prometheus.retention = "24h" |
+  .hubClusterSets.hub.config.uwm.prometheus.storage = "10Gi" |
+  .hubClusterSets.hub.config.uwm.thanosRuler.retention = "24h" |
+  .hubClusterSets.hub.config.uwm.thanosRuler.storage = "5Gi"
+' autoshift/values/clustersets/hub-minimal.yaml
+----
 
-      ### OpenShift GitOps (REQUIRED)
-      gitops: 'true'
-      gitops-subscription-name: openshift-gitops-operator
-      gitops-disable-default-argocd: 'true'
-      gitops-channel: gitops-1.21
-      gitops-source: redhat-operators
-      gitops-source-namespace: openshift-marketplace
-
-      ### Advanced Cluster Management (AUTOMATIC)
-      acm-subscription-name: advanced-cluster-management
-      acm-channel: release-2.17
-      acm-source: redhat-operators
-      acm-source-namespace: openshift-marketplace
-      acm-search-storage: 'true'
-
-      ### OpenShift Data Foundation, NooBaa only
-      odf: 'true'
-      odf-subscription-name: odf-operator
-      odf-channel: stable-4.22
-      odf-source: redhat-operators
-      odf-source-namespace: openshift-marketplace
-      odf-multi-cloud-gateway: standalone
-
-      ### Quay
-      quay: 'true'
-      quay-subscription-name: quay-operator
-      quay-channel: stable-3.18
-      quay-source: redhat-operators
-      quay-source-namespace: openshift-marketplace
-
-      gitops-cluster-ca-bundle: 'true'
-
-      ### Cluster install, enabled in Module 3. Removing these withdraws the
-      ### cluster-install policies while the spoke is still provisioning.
-      cluster-install: 'true'
-      acm-enable-provisioning: 'true'
-
-      ### Node Feature Discovery, disabled at the end of Module 4
-      node-feature-discovery: 'false'
-      node-feature-discovery-subscription-name: nfd
-      node-feature-discovery-channel: stable
-      node-feature-discovery-source: redhat-operators
-      node-feature-discovery-source-namespace: openshift-marketplace
+. Append the `uwm` enable flag. The file still ends inside the `labels:` block, so the label lands in the right place:
++
+[source,role="execute"]
+----
+cat >> autoshift/values/clustersets/hub-minimal.yaml << 'EOF'
 
       ### User Workload Monitoring
       uwm: 'true'
@@ -224,8 +167,8 @@ tail -2 autoshift/values/clustersets/hub-minimal.yaml
 ----
       uwm:
         prometheus:
-          retention: '24h'
-          storage: '10Gi'
+          retention: 24h
+          storage: 10Gi
       ### User Workload Monitoring
       uwm: 'true'
 ----

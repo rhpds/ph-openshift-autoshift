@@ -243,7 +243,7 @@ The 5 stages are:
 
 `tools/` is its own Go module, independent from the repository root, so Go has to be pointed at it. `go test ./tools/internal/resolver/...` from the repo root fails with "directory prefix ... does not contain main module"; `-C tools` runs the test in that module without changing your working directory.
 
-The suite requires Go {go_version} or later, which can be newer than the Go installed on the bastion. `GOTOOLCHAIN=auto` in front of each `go test` lets Go download the version the module asks for when the installed one is older. It overrides the `GOTOOLCHAIN=local` setting in the Red Hat Enterprise Linux Go package for that 1 command. The first run takes longer while the download completes; if the installed Go is already new enough, nothing is downloaded.
+The suite requires the Go version named in `tools/go.mod`, which can be newer than the Go installed on the bastion. `GOTOOLCHAIN=auto` in front of each `go test` lets Go download the version the module asks for when the installed one is older. It overrides the `GOTOOLCHAIN=local` setting in the Red Hat Enterprise Linux Go package for that 1 command. The first run takes longer while the download completes; if the installed Go is already new enough, nothing is downloaded.
 
 === Run the test
 

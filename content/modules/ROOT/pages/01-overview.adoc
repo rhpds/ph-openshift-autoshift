@@ -38,7 +38,7 @@ operator.
 
 One constraint in the bootstrap order is non-obvious: ACM must be installed *before* Red Hat
 OpenShift GitOps. The GitOps repo-server runs a PolicyGenerator CMP sidecar whose init-container
-image is resolved by a render-time lookup of ACM's `multicluster-operators-hub-subscription`
+image is resolved by a render-time lookup of ACM's `acm-cli-downloads`
 deployment. If you bootstrap GitOps first, that lookup finds nothing and the CMP is
 misconfigured. This applies to source installs only. In OCI mode the charts are pre-rendered and no
 CMP is involved, so the ordering constraint does not exist there. Module 1 walks through the

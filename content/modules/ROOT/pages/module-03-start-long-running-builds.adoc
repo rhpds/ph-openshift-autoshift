@@ -50,50 +50,29 @@ Module 8 publishes AutoShift to an Open Container Initiative (OCI) registry. It 
 
 Quay needs object storage. Rather than a full ODF deployment with Ceph and dedicated storage nodes, `odf-multi-cloud-gateway: standalone` brings up NooBaa alone. That is what makes a registry viable on a single lab cluster: the shipped `QuayRegistry` sets `objectstorage: managed: true`, and NooBaa satisfies it.
 
-. Write the hub clusterset file. It declares the registry, and adds the `config:` section Quay needs
-before it rolls out.
+. Add the `config:` section Quay needs before it rolls out. Quay ships no bootstrap Job, so the registry starts with no users. Module 8 creates the first one through the registry API, and that endpoint is only reachable when these settings are in place *before* Quay rolls out:
 +
 [source,role="execute"]
 ----
-cat > autoshift/values/clustersets/hub-minimal.yaml << 'EOF'
-# Minimum Hub Cluster Configuration
-hubClusterSets:
-  hub:
-    config:
-      # Quay ships no bootstrap Job, so the registry starts with no users. Module 8 creates the
-      # first one through the registry API, and that endpoint is only reachable when these are
-      # set BEFORE Quay rolls out.
-      quay:
-        bootstrap:
-          userInitialize: true
-          xhrOnly: false
-    labels:
-      # Required: OpenShift version for image mirroring, cluster installs and upgrades
-      openshift-version: '4.22.8'
+yq -i '.hubClusterSets.hub = {"config": {"quay": {"bootstrap": {"userInitialize": true, "xhrOnly": false}}}} * .hubClusterSets.hub' \
+  autoshift/values/clustersets/hub-minimal.yaml
+----
++
+The merge places `config:` ahead of `labels:`, so the file still ends inside the `labels:` block and the appends later in this lab keep landing in the right place. `yq` also drops the blank lines between label groups. That changes nothing that AutoShift reads.
 
-      # Required: Indicates this is a self-managed hub cluster
-      self-managed: 'true'
-
-      ### OpenShift GitOps (REQUIRED)
-      gitops: 'true'
-      gitops-subscription-name: openshift-gitops-operator
-      gitops-disable-default-argocd: 'true'
-      gitops-channel: gitops-1.21
-      gitops-source: redhat-operators
-      gitops-source-namespace: openshift-marketplace
-
-      ### Advanced Cluster Management (AUTOMATIC)
-      acm-subscription-name: advanced-cluster-management
-      acm-channel: release-2.17
-      acm-source: redhat-operators
-      acm-source-namespace: openshift-marketplace
-      # Persistent volume for the Search database, on the cluster's default StorageClass
-      acm-search-storage: 'true'
+. Append the registry labels. The ODF and Quay channels are read from `hub.yaml`, the full hub profile that ships with AutoShift, so they always match the release you cloned rather than a version copied into this guide:
++
+[source,role="execute"]
+----
+HUB_PROFILE=autoshift/values/clustersets/hub.yaml
+ODF_CHANNEL=$(yq '.hubClusterSets.hub.labels."odf-channel"' "${HUB_PROFILE}")
+QUAY_CHANNEL=$(yq '.hubClusterSets.hub.labels."quay-channel"' "${HUB_PROFILE}")
+cat >> autoshift/values/clustersets/hub-minimal.yaml << EOF
 
       ### OpenShift Data Foundation, NooBaa only
       odf: 'true'
       odf-subscription-name: odf-operator
-      odf-channel: stable-4.22
+      odf-channel: ${ODF_CHANNEL}
       odf-source: redhat-operators
       odf-source-namespace: openshift-marketplace
       odf-multi-cloud-gateway: standalone
@@ -101,7 +80,7 @@ hubClusterSets:
       ### Quay
       quay: 'true'
       quay-subscription-name: quay-operator
-      quay-channel: stable-3.18
+      quay-channel: ${QUAY_CHANNEL}
       quay-source: redhat-operators
       quay-source-namespace: openshift-marketplace
 
@@ -109,6 +88,18 @@ hubClusterSets:
       ### Module 8 needs this to push charts to the in-cluster registry.
       gitops-cluster-ca-bundle: 'true'
 EOF
+----
+
+. Confirm the channels were filled in. Both lines must end in a channel name, not an empty value:
++
+[source,role="execute"]
+----
+grep -E 'odf-channel|quay-channel' autoshift/values/clustersets/hub-minimal.yaml
+----
++
+----
+      odf-channel: stable-<version>
+      quay-channel: stable-<version>
 ----
 
 . Apply. This is the same command you have run in every module:
@@ -492,7 +483,7 @@ Do not hardcode a version from a document into a values file, here or anywhere e
 
 `openshift-version` on a clusterset is the *desired* version. It drives operator-catalog alignment, and the `openshift-upgrade` policy treats it as an upgrade target: a cluster opted in to upgrades moves when its clusterset's `openshift-version` is higher than the cluster's current version. A number copied from a guide is a number nobody chose deliberately.
 
-The `hub-minimal.yaml` you wrote in Exercise 1 keeps the fixed `openshift-version` it was written with, the same kind of value Module 2 traced. It is not read from your cluster, so it may not match the version you are running. The hub does not opt in to upgrades, so the upgrade policy takes no action, but it is worth knowing the value is there rather than assuming it matches.
+The `hub-minimal.yaml` you edited in Exercise 1 keeps the fixed `openshift-version` that ships in it, the same kind of value Module 2 traced. It is not read from your cluster, so it may not match the version you are running. The hub does not opt in to upgrades, so the upgrade policy takes no action, but it is worth knowing the value is there rather than assuming it matches.
 ====
 
 `pullSecretRef` uses the object form rather than a plain string name because the `aws-creds` secret stores the pull secret under the custom key `pullSecret`, not the default `.dockerconfigjson`. The policy reads the key by name via a hub template lookup.
